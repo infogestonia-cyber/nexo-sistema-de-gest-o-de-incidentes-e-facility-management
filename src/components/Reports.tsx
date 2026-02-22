@@ -19,7 +19,7 @@ export default function Reports() {
     try {
       let endpoint = '';
       let fileName = '';
-      
+
       switch (type) {
         case 'incidents':
           endpoint = '/api/incidents';
@@ -132,13 +132,13 @@ export default function Reports() {
         ))}
       </div>
 
-      <div className="bg-emerald-500/5 border border-emerald-500/20 p-6 rounded-[32px] flex items-center gap-6">
-        <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white shrink-0">
+      <div className="bg-brand-surface border border-brand-border p-6 rounded-[32px] flex items-center gap-6">
+        <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-gray-500 shrink-0">
           <FileText size={24} />
         </div>
         <div>
-          <h4 className="text-sm font-bold text-white">Relatórios Customizados por IA</h4>
-          <p className="text-xs text-gray-500 mt-1">Precisa de um cruzamento de dados específico? Utilize o assistente Gemini na barra lateral para gerar análises ad-hoc em tempo real.</p>
+          <h4 className="text-sm font-bold text-white">Centro de Exportação Nexo</h4>
+          <p className="text-xs text-gray-500 mt-1">Todos os dados exportados seguem os padrões de auditoria ISO 41001 para a gestão de infraestruturas.</p>
         </div>
       </div>
     </div>

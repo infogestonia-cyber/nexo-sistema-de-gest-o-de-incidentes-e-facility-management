@@ -35,7 +35,7 @@ export default function Users() {
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
@@ -64,9 +64,9 @@ export default function Users() {
         <div className="flex items-center gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-3.5 h-3.5" />
-            <input 
-              type="text" 
-              placeholder="Pesquisar pessoal..." 
+            <input
+              type="text"
+              placeholder="Pesquisar pessoal..."
               className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64 text-xs"
             />
           </div>
@@ -76,7 +76,7 @@ export default function Users() {
           </div>
         </div>
         {canManageUsers(user.perfil) && (
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 text-xs"
           >
@@ -111,11 +111,10 @@ export default function Users() {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
-                    user.perfil === 'Administrador' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
-                    user.perfil === 'Gestor' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
-                    'bg-gray-500/10 text-gray-400 border border-gray-500/20'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${user.perfil === 'Administrador' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
+                      user.perfil === 'Gestor' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                        'bg-gray-500/10 text-gray-400 border border-gray-500/20'
+                    }`}>
                     {user.perfil}
                   </span>
                 </td>
@@ -139,14 +138,14 @@ export default function Users() {
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-md"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -164,42 +163,42 @@ export default function Users() {
               <form onSubmit={handleSubmit} className="p-8 space-y-5">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Nome Completo</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     required
                     value={formData.nome}
-                    onChange={(e) => setFormData({...formData, nome: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                     placeholder="ex: João Silva"
                     className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Endereço de Email</label>
-                  <input 
-                    type="email" 
+                  <input
+                    type="email"
                     required
                     value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    placeholder="ex: joao@gestpro.com"
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="ex: joao@nexo.com"
                     className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Palavra-passe de Acesso</label>
-                  <input 
-                    type="password" 
+                  <input
+                    type="password"
                     required
                     value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder="••••••••"
                     className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Perfil de Acesso</label>
-                  <select 
+                  <select
                     value={formData.perfil}
-                    onChange={(e) => setFormData({...formData, perfil: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, perfil: e.target.value })}
                     className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
                   >
                     <option value="Administrador" className="bg-brand-surface">Administrador</option>
@@ -208,7 +207,7 @@ export default function Users() {
                     <option value="Visualizador" className="bg-brand-surface">Visualizador</option>
                   </select>
                 </div>
-                <button 
+                <button
                   type="submit"
                   disabled={submitting}
                   className="w-full py-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"

@@ -43,7 +43,7 @@ export default function Login({ onLogin }: LoginProps) {
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-500/5 rounded-full blur-[120px]"></div>
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-[380px] bg-brand-surface rounded-[32px] shadow-2xl overflow-hidden relative z-10 border border-brand-border"
@@ -52,8 +52,8 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
             <ShieldCheck size={24} className="text-white" />
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">GestPro FM</h1>
-          <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-[0.2em] font-bold">Inteligência de Infraestruturas</p>
+          <h1 className="text-xl font-bold text-white tracking-tight">Nexo - SGFM</h1>
+          <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-[0.2em] font-bold">Sistema de Gestão de Incidentes</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
@@ -67,12 +67,12 @@ export default function Login({ onLogin }: LoginProps) {
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Endereço de Email</label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 w-4 h-4" />
-              <input 
-                type="email" 
+              <input
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-xs text-white placeholder:text-gray-700"
-                placeholder="admin@gestpro.com"
+                placeholder="admin@nexo.com"
                 required
               />
             </div>
@@ -82,8 +82,8 @@ export default function Login({ onLogin }: LoginProps) {
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Palavra-passe de Acesso</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 w-4 h-4" />
-              <input 
-                type="password" 
+              <input
+                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-xs text-white placeholder:text-gray-700"
@@ -93,7 +93,7 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={loading}
             className="w-full py-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50 uppercase tracking-widest text-[11px]"

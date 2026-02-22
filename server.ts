@@ -121,12 +121,12 @@ db.exec(`
 `);
 
 // Seed Admin User
-const adminExists = db.prepare("SELECT * FROM users WHERE email = ?").get("admin@gestpro.com");
+const adminExists = db.prepare("SELECT * FROM users WHERE email = ?").get("admin@nexo.com");
 if (!adminExists) {
   const hashedPassword = bcrypt.hashSync("admin123", 10);
   db.prepare("INSERT INTO users (nome, email, password, perfil) VALUES (?, ?, ?, ?)").run(
     "Administrador Sistema",
-    "admin@gestpro.com",
+    "admin@nexo.com",
     hashedPassword,
     "Administrador"
   );
@@ -347,21 +347,9 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.get("/api/ai/summary/:id", authenticate, async (req, res) => {
-    const incident = db.prepare("SELECT i.*, p.endereco as property_name FROM incidents i JOIN properties p ON i.property_id = p.id WHERE i.id = ?").get(req.params.id) as any;
-    const actions = db.prepare("SELECT a.*, u.nome as user_nome FROM incident_actions a JOIN users u ON a.user_id = u.id WHERE a.incident_id = ? ORDER BY a.data_hora ASC").all(req.params.id);
-    const summary = `### Protocol Analysis: #${incident.id}\n**Asset:** ${incident.property_name}\n**Category:** ${incident.categoria}\n**Severity:** ${incident.severidade}\n\n**Lifecycle Summary:**\nThe incident was reported as **${incident.severidade}** priority. \nTechnical actions logged: ${actions.length}.\nCurrent status is **${incident.estado}**.\n\n**Technical Recommendation:**\nBased on the operational log, the system recommends a full diagnostic of the secondary circuits to prevent recurrence.`;
-    res.json({ summary });
-  });
-
-  app.post("/api/ai/predictive-maintenance", authenticate, async (req, res) => {
-    const { assetId } = req.body;
-    const asset = db.prepare("SELECT * FROM assets WHERE id = ?").get(assetId) as any;
-    const risk = asset.probabilidade_falha === 'Alta' ? 'CRITICAL' : 'MODERATE';
-    res.json({
-      prediction: `${risk} RISK DETECTED: Anomalous vibration patterns identified in the last 72 hours. Probability of fatigue failure within 15 days is estimated at 78%.`,
-      recommendation: "Immediate inspection of the primary drive shaft and lubrication of bearing housing."
-    });
+  // Placeholder status check for system intelligence
+  app.get("/api/system/status", authenticate, (req, res) => {
+    res.json({ status: "Operacional", modules: ["Incidentes", "Ativos", "Manutenção"] });
   });
 
   if (process.env.NODE_ENV !== "production") {
@@ -389,7 +377,7 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(3000, "0.0.0.0", () => console.log(`Premium GestPro FM running on http://localhost:3000`));
+  httpServer.listen(3000, "0.0.0.0", () => console.log(`Nexo - SGFM running on http://localhost:3000`));
 }
 
 startServer();

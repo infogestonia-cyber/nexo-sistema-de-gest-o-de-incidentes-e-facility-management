@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  Building2, 
-  Wrench, 
-  AlertCircle, 
-  Calendar, 
-  Users as UsersIcon, 
-  LogOut, 
-  Menu, 
+import {
+  LayoutDashboard,
+  Building2,
+  Wrench,
+  AlertCircle,
+  Calendar,
+  Users as UsersIcon,
+  LogOut,
+  Menu,
   X,
   Bell,
   Search,
@@ -135,14 +135,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-brand-bg flex font-sans text-gray-300 selection:bg-emerald-500/30 overflow-hidden">
       {/* Premium Sidebar */}
-      <motion.aside 
+      <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 240 : 80 }}
         className="bg-brand-surface border-r border-brand-border flex flex-col sticky top-0 h-screen z-50 shrink-0"
       >
         <div className="p-4 flex items-center justify-between">
           {isSidebarOpen && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="flex items-center gap-2"
@@ -151,12 +151,12 @@ export default function App() {
                 <ShieldCheck className="text-white w-4 h-4" />
               </div>
               <div>
-                <span className="font-bold text-sm tracking-tight block leading-none text-white">GestPro</span>
-                <span className="text-[8px] uppercase tracking-[0.15em] text-emerald-500 font-bold">Inteligência de Infraestruturas</span>
+                <span className="font-bold text-sm tracking-tight block leading-none text-white">Nexo</span>
+                <span className="text-[8px] uppercase tracking-[0.15em] text-emerald-500 font-bold">SGFM - Sistema de Gestão</span>
               </div>
             </motion.div>
           )}
-          <button 
+          <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-1.5 hover:bg-white/5 rounded-lg transition-colors text-gray-500 hover:text-white"
           >
@@ -200,7 +200,7 @@ export default function App() {
               </div>
             )}
           </div>
-          <button 
+          <button
             onClick={handleLogout}
             className={`sidebar-item w-full text-red-400 hover:bg-red-400/5 hover:text-red-400 py-1.5 ${!isSidebarOpen ? 'justify-center px-0' : ''}`}
           >
@@ -223,24 +223,24 @@ export default function App() {
               <span className="text-[9px] font-mono text-emerald-500 uppercase tracking-widest font-bold">Operacional</span>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <div className="relative hidden md:block">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600 w-3 h-3" />
-              <input 
-                type="text" 
-                placeholder="Pesquisa Global..." 
+              <input
+                type="text"
+                placeholder="Pesquisa Global..."
                 className="bg-white/5 border border-brand-border rounded-lg pl-8 pr-3 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30 w-48 transition-all"
               />
             </div>
-            <button 
+            <button
               onClick={toggleTheme}
               className="p-1.5 text-gray-400 hover:text-white transition-colors"
             >
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
             <div className="relative">
-              <button 
+              <button
                 onClick={() => {
                   setIsNotifOpen(!isNotifOpen);
                   if (!isNotifOpen) markNotificationsRead();
@@ -252,12 +252,12 @@ export default function App() {
                   <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-emerald-500 rounded-full border border-brand-surface"></span>
                 )}
               </button>
-              
+
               <AnimatePresence>
                 {isNotifOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -310,13 +310,13 @@ export default function App() {
                 <IncidentDetail id={selectedIncidentId} onBack={() => setSelectedIncidentId(null)} />
               ) : (
                 activeTab === 'dashboard' ? <Dashboard onSelectIncident={setSelectedIncidentId} /> :
-                activeTab === 'properties' ? <Properties onSelectProperty={(id) => { setPropertyFilter(id); setActiveTab('assets'); }} /> :
-                activeTab === 'incidents' ? <Incidents onSelectIncident={setSelectedIncidentId} /> :
-                activeTab === 'assets' ? <Assets propertyId={propertyFilter} onClearFilter={() => setPropertyFilter(null)} /> :
-                activeTab === 'maintenance' ? <Maintenance /> :
-                activeTab === 'planning' ? <Planning5Y /> :
-                activeTab === 'reports' ? <Reports /> :
-                activeTab === 'users' ? <Users /> : <Dashboard onSelectIncident={setSelectedIncidentId} />
+                  activeTab === 'properties' ? <Properties onSelectProperty={(id) => { setPropertyFilter(id); setActiveTab('assets'); }} /> :
+                    activeTab === 'incidents' ? <Incidents onSelectIncident={setSelectedIncidentId} /> :
+                      activeTab === 'assets' ? <Assets propertyId={propertyFilter} onClearFilter={() => setPropertyFilter(null)} /> :
+                        activeTab === 'maintenance' ? <Maintenance /> :
+                          activeTab === 'planning' ? <Planning5Y /> :
+                            activeTab === 'reports' ? <Reports /> :
+                              activeTab === 'users' ? <Users /> : <Dashboard onSelectIncident={setSelectedIncidentId} />
               )}
             </motion.div>
           </AnimatePresence>
