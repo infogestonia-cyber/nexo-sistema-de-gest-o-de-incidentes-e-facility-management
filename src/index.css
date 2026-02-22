@@ -1,0 +1,154 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Playfair Display", serif;
+  
+  --color-brand-bg: #0A0B0D;
+  --color-brand-surface: #151619;
+  --color-brand-accent: #10B981;
+  --color-brand-border: rgba(255, 255, 255, 0.06);
+  --color-brand-text-primary: #FFFFFF;
+  --color-brand-text-secondary: #94A3B8;
+}
+
+:root.light {
+  --color-brand-bg: #F8FAFC;
+  --color-brand-surface: #FFFFFF;
+  --color-brand-accent: #10B981;
+  --color-brand-border: rgba(0, 0, 0, 0.08);
+  --color-brand-text-primary: #0F172A;
+  --color-brand-text-secondary: #64748B;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-brand-text-secondary antialiased font-sans text-[13px] transition-colors duration-300;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-brand-text-primary font-bold tracking-tight;
+  }
+
+  input, select, textarea {
+    @apply text-brand-text-primary placeholder:text-gray-600;
+  }
+
+  .light input, .light select, .light textarea {
+    @apply placeholder:text-slate-400;
+  }
+
+  .light option {
+    @apply bg-white text-slate-900;
+  }
+}
+
+/* Global Light Theme Overrides for hardcoded classes */
+.light .text-white {
+  @apply !text-slate-900;
+}
+
+.light .bg-white\/5 {
+  @apply !bg-slate-100;
+}
+
+.light .bg-white\/\[0\.02\] {
+  @apply !bg-slate-50;
+}
+
+.light .border-white\/5, .light .border-white\/10 {
+  @apply !border-slate-200;
+}
+
+.light .text-gray-300 {
+  @apply !text-slate-700;
+}
+
+.light .text-gray-400 {
+  @apply !text-slate-600;
+}
+
+.light .text-gray-500 {
+  @apply !text-slate-500;
+}
+
+/* Premium Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Glassmorphism Classes */
+.glass {
+  @apply bg-white/5 backdrop-blur-xl border border-white/10;
+}
+
+.glass-dark {
+  @apply bg-black/40 backdrop-blur-2xl border border-white/5;
+}
+
+/* Data Grid Styling */
+.data-row {
+  @apply border-b border-brand-border hover:bg-white/[0.02] transition-all duration-200 cursor-pointer;
+}
+
+.light .data-row:hover {
+  @apply bg-slate-100;
+}
+
+.col-header {
+  @apply font-mono font-bold text-[9px] text-gray-500 uppercase tracking-[0.15em] py-3 px-4;
+}
+
+.data-value {
+  @apply font-mono tracking-tight text-[11px];
+}
+
+.sidebar-item {
+  @apply flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-gray-500 hover:text-white hover:bg-white/5;
+}
+
+.light .sidebar-item:hover {
+  @apply bg-slate-100 text-slate-900;
+}
+
+.sidebar-item.active {
+  @apply text-emerald-500 bg-emerald-500/10 border border-emerald-500/20;
+}
+
+.light .sidebar-item.active {
+  @apply bg-emerald-500/5 border-emerald-500/10;
+}
+
+/* Animation for page transitions */
+.page-enter {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
