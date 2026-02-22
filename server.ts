@@ -1,6 +1,8 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
+
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -13,6 +15,8 @@ const __dirname = path.dirname(__filename);
 
 const db = new Database("facility_management.db");
 const JWT_SECRET = process.env.JWT_SECRET || "gestpro-secret-key-2025";
+console.log(`[Server] Starting in ${process.env.NODE_ENV === 'production' ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
+
 
 // Initialize Database Schema
 db.exec(`
@@ -175,7 +179,7 @@ async function startServer() {
 
   // User Management
   app.get("/api/users", authenticate, (req, res) => res.json(db.prepare("SELECT id, nome, email, perfil, estado FROM users").all()));
-  
+
   // Notifications
   app.get("/api/notifications", authenticate, (req, res) => {
     const userId = (req as any).user.id;
@@ -265,11 +269,11 @@ async function startServer() {
       INSERT INTO incidents (property_id, asset_id, categoria, descricao, severidade, responsavel_id, sla_resposta_limite, sla_resolucao_limite) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(property_id, asset_id, categoria, descricao, severidade, responsavel_id, slaResp, slaRes);
-    
+
     if (responsavel_id) {
       createNotification(responsavel_id, "Novo Incidente Atribuído", `Foi-lhe atribuído um incidente de severidade ${severidade} em ${categoria}.`);
     }
-    
+
     res.json({ id: result.lastInsertRowid });
   });
 
@@ -291,7 +295,7 @@ async function startServer() {
         if (novo_estado === 'Resolvido' || novo_estado === 'Fechado') updateFields.push("data_resolucao = COALESCE(data_resolucao, CURRENT_TIMESTAMP)");
         params.push(req.params.id);
         db.prepare(`UPDATE incidents SET ${updateFields.join(", ")} WHERE id = ?`).run(...params);
-        
+
         // Notify the reporter or responsible if needed
         const incident = db.prepare("SELECT responsavel_id, categoria FROM incidents WHERE id = ?").get(req.params.id) as any;
         if (incident && incident.responsavel_id && incident.responsavel_id !== userId) {
@@ -312,23 +316,23 @@ async function startServer() {
   app.post("/api/maintenance-plans", authenticate, (req, res) => {
     console.log("POST /api/maintenance-plans - Body:", req.body);
     const { asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado } = req.body;
-    
+
     if (!asset_id || !responsavel_id) {
       return res.status(400).json({ error: "Ativo e Responsável são obrigatórios" });
     }
 
     try {
       const result = db.prepare("INSERT INTO maintenance_plans (asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado) VALUES (?, ?, ?, ?, ?, ?)").run(
-        parseInt(asset_id), 
-        tipo, 
-        periodicidade, 
-        proxima_data, 
-        parseInt(responsavel_id), 
+        parseInt(asset_id),
+        tipo,
+        periodicidade,
+        proxima_data,
+        parseInt(responsavel_id),
         parseFloat(custo_estimado) || 0
       );
-      
+
       createNotification(parseInt(responsavel_id), "Novo Plano de Manutenção", `Foi-lhe atribuída a manutenção ${tipo} para o ativo ID ${asset_id}.`);
-      
+
       res.json({ id: result.lastInsertRowid });
     } catch (e) {
       console.error("Erro ao criar plano de manutenção:", e);
@@ -354,7 +358,7 @@ async function startServer() {
     const { assetId } = req.body;
     const asset = db.prepare("SELECT * FROM assets WHERE id = ?").get(assetId) as any;
     const risk = asset.probabilidade_falha === 'Alta' ? 'CRITICAL' : 'MODERATE';
-    res.json({ 
+    res.json({
       prediction: `${risk} RISK DETECTED: Anomalous vibration patterns identified in the last 72 hours. Probability of fatigue failure within 15 days is estimated at 78%.`,
       recommendation: "Immediate inspection of the primary drive shaft and lubrication of bearing housing."
     });
@@ -363,9 +367,26 @@ async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
+    app.get("*", async (req, res, next) => {
+      // Don't serve index.html for API or asset requests
+      if (req.originalUrl.startsWith('/api') || req.originalUrl.includes('.')) {
+        return next();
+      }
+      try {
+        let template = fs.readFileSync(path.resolve(__dirname, "index.html"), "utf-8");
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     app.use(express.static(path.join(__dirname, "dist")));
-    app.get("*", (req, res) => res.sendFile(path.join(__dirname, "dist", "index.html")));
+    app.get("*", (req, res, next) => {
+      if (req.originalUrl.startsWith('/api')) return next();
+      res.sendFile(path.resolve(__dirname, "dist", "index.html"));
+    });
   }
 
   httpServer.listen(3000, "0.0.0.0", () => console.log(`Premium GestPro FM running on http://localhost:3000`));

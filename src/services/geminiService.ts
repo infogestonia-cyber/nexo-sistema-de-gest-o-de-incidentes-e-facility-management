@@ -1,10 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 export const generateReportSummary = async (incidentData: any) => {
+  if (!genAI) {
+    return "Gemini API Key não configurada. O resumo automático está desativado.";
+  }
+
   try {
-    const response = await ai.models.generateContent({
+    const response = await (genAI as any).models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Analise os seguintes dados de um incidente de Facility Management e forneça um resumo executivo profissional em português:
       ${JSON.stringify(incidentData)}`,
