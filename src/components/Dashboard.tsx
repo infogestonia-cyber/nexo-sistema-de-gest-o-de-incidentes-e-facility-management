@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  AlertCircle, 
-  CheckCircle2, 
-  Clock, 
-  TrendingUp, 
-  TrendingDown, 
+import {
+  Activity,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  TrendingUp,
+  TrendingDown,
   Users,
   Zap,
   Shield,
@@ -13,13 +13,13 @@ import {
   MoreVertical,
   Cpu
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   AreaChart,
   Area,
@@ -30,16 +30,16 @@ import {
 import { motion } from 'motion/react';
 import socket from '../services/socketService';
 
-export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id: number) => void }) {
+export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
 
   useEffect(() => {
     fetchStats();
-    
-    socket.emit("join-room", { 
-      roomId: "dashboard", 
-      user: JSON.parse(localStorage.getItem('user') || '{}') 
+
+    socket.emit("join-room", {
+      roomId: "dashboard",
+      user: JSON.parse(localStorage.getItem('user') || '{}')
     });
 
     socket.on("presence-update", (users) => {
@@ -78,12 +78,12 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map((kpi, i) => (
-          <motion.div 
+          <motion.div
             key={i}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-brand-surface p-5 rounded-[24px] border border-brand-border relative overflow-hidden group"
+            className="bg-brand-surface p-5 rounded-none border border-brand-border relative overflow-hidden group"
           >
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
               <kpi.icon size={64} />
@@ -105,7 +105,7 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Chart */}
-        <div className="lg:col-span-2 bg-brand-surface p-6 rounded-[32px] border border-brand-border">
+        <div className="lg:col-span-2 bg-brand-surface p-6 rounded-none border border-brand-border">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h3 className="text-base font-bold text-white tracking-tight">Desempenho Operacional</h3>
@@ -123,24 +123,24 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
               <AreaChart data={stats.byStatus}>
                 <defs>
                   <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis 
-                  dataKey="estado" 
-                  axisLine={false} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="estado"
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fill: '#6B7280', fontSize: 9, fontWeight: 600 }}
                   dy={10}
                 />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fill: '#6B7280', fontSize: 9, fontWeight: 600 }}
                 />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#151619', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                   itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 600 }}
                 />
@@ -151,7 +151,7 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
         </div>
 
         {/* Severity Distribution */}
-        <div className="bg-brand-surface p-6 rounded-[32px] border border-brand-border">
+        <div className="bg-brand-surface p-6 rounded-none border border-brand-border">
           <h3 className="text-base font-bold text-white tracking-tight mb-6">Matriz de Severidade</h3>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -168,12 +168,12 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
                   {stats.bySeverity.map((entry: any, index: number) => (
                     <Cell key={`cell-${index}`} fill={
                       entry.severidade === 'Crítico' ? '#EF4444' :
-                      entry.severidade === 'Alto' ? '#F59E0B' :
-                      entry.severidade === 'Médio' ? '#3B82F6' : '#10B981'
+                        entry.severidade === 'Alto' ? '#F59E0B' :
+                          entry.severidade === 'Médio' ? '#3B82F6' : '#10B981'
                     } />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#151619', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                   itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 600 }}
                 />
@@ -183,11 +183,10 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
           <div className="grid grid-cols-2 gap-3 mt-4">
             {stats.bySeverity.map((s: any, i: number) => (
               <div key={i} className="flex items-center gap-2 bg-white/5 p-2 rounded-xl border border-white/5">
-                <div className={`w-1.5 h-1.5 rounded-full ${
-                  s.severidade === 'Crítico' ? 'bg-red-500' :
+                <div className={`w-1.5 h-1.5 rounded-full ${s.severidade === 'Crítico' ? 'bg-red-500' :
                   s.severidade === 'Alto' ? 'bg-amber-500' :
-                  s.severidade === 'Médio' ? 'bg-blue-500' : 'bg-emerald-500'
-                }`}></div>
+                    s.severidade === 'Médio' ? 'bg-blue-500' : 'bg-emerald-500'
+                  }`}></div>
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">{s.severidade}</span>
                 <span className="text-[10px] font-mono font-bold text-white ml-auto">{s.count}</span>
               </div>
@@ -196,7 +195,7 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
         </div>
 
         {/* Recent Protocols */}
-        <div className="lg:col-span-2 bg-brand-surface rounded-[32px] border border-brand-border overflow-hidden">
+        <div className="lg:col-span-2 bg-brand-surface rounded-none border border-brand-border overflow-hidden">
           <div className="p-6 border-b border-brand-border flex items-center justify-between">
             <h3 className="text-base font-bold text-white tracking-tight">Protocolos Ativos</h3>
             <button className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest hover:underline">Ver Matriz Completa</button>
@@ -214,8 +213,8 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
               </thead>
               <tbody className="divide-y divide-brand-border">
                 {stats.recentIncidents.map((incident: any) => (
-                  <tr 
-                    key={incident.id} 
+                  <tr
+                    key={incident.id}
                     className="data-row"
                     onClick={() => onSelectIncident?.(incident.id)}
                   >
@@ -234,11 +233,10 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
-                        incident.severidade === 'Crítico' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${incident.severidade === 'Crítico' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
                         incident.severidade === 'Alto' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' :
-                        'bg-blue-500/10 text-blue-500 border border-blue-500/20'
-                      }`}>
+                          'bg-blue-500/10 text-blue-500 border border-blue-500/20'
+                        }`}>
                         {incident.severidade}
                       </span>
                     </td>
@@ -261,7 +259,7 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
         </div>
 
         {/* Real-time Presence */}
-        <div className="bg-brand-surface p-6 rounded-[32px] border border-brand-border">
+        <div className="bg-brand-surface p-6 rounded-none border border-brand-border">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-base font-bold text-white tracking-tight">Pessoal Ativo</h3>
             <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[9px] font-bold rounded-lg uppercase tracking-widest border border-emerald-500/20">Direto</span>

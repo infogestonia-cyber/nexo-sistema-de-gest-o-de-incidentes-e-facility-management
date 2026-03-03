@@ -1,145 +1,52 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 
-import Database from "better-sqlite3";
-import bcrypt from "bcryptjs";
+import { createClient } from "@supabase/supabase-js";
 import jwt from "jsonwebtoken";
 import { fileURLToPath } from "url";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("facility_management.db");
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://cjatwytjglubwhydmtxn.supabase.co";
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_GqcBiP6hTOMf8ertftVawA_0ig2Xc8X";
+// Service Role Key necessária para criar utilizadores via Admin API
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Cliente admin só é criado se a Service Role Key estiver definida
+const supabaseAdmin = SUPABASE_SERVICE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
+  : null;
+
 const JWT_SECRET = process.env.JWT_SECRET || "gestpro-secret-key-2025";
+// Palavra-passe do administrador local (configurável via variável de ambiente)
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 console.log(`[Server] Starting in ${process.env.NODE_ENV === 'production' ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
-
-
-// Initialize Database Schema
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    perfil TEXT CHECK(perfil IN ('Administrador', 'Gestor', 'Técnico', 'Visualizador')) NOT NULL,
-    estado TEXT DEFAULT 'Ativo'
-  );
-
-  CREATE TABLE IF NOT EXISTS properties (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    codigo TEXT UNIQUE NOT NULL,
-    endereco TEXT NOT NULL,
-    inquilino TEXT,
-    referencia_interna TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS assets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL,
-    categoria TEXT NOT NULL,
-    property_id INTEGER,
-    localizacao_detalhada TEXT,
-    data_instalacao TEXT,
-    probabilidade_falha TEXT CHECK(probabilidade_falha IN ('Baixa', 'Média', 'Alta')),
-    sinais_alerta TEXT,
-    FOREIGN KEY (property_id) REFERENCES properties(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS incidents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-    property_id INTEGER,
-    asset_id INTEGER,
-    categoria TEXT NOT NULL,
-    descricao TEXT NOT NULL,
-    severidade TEXT CHECK(severidade IN ('Baixa', 'Médio', 'Alto', 'Crítico')),
-    estado TEXT CHECK(estado IN ('Aberto', 'Atribuído', 'Em progresso', 'Em validação', 'Resolvido', 'Fechado')) DEFAULT 'Aberto',
-    responsavel_id INTEGER,
-    sla_resposta_limite DATETIME,
-    sla_resolucao_limite DATETIME,
-    data_resposta DATETIME,
-    data_resolucao DATETIME,
-    FOREIGN KEY (property_id) REFERENCES properties(id),
-    FOREIGN KEY (asset_id) REFERENCES assets(id),
-    FOREIGN KEY (responsavel_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS incident_actions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    incident_id INTEGER,
-    user_id INTEGER,
-    descricao_acao TEXT NOT NULL,
-    data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (incident_id) REFERENCES incidents(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS maintenance_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    asset_id INTEGER,
-    tipo TEXT NOT NULL,
-    periodicidade TEXT NOT NULL,
-    proxima_data TEXT,
-    responsavel_id INTEGER,
-    custo_estimado REAL,
-    FOREIGN KEY (asset_id) REFERENCES assets(id),
-    FOREIGN KEY (responsavel_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS maintenance_executions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    plan_id INTEGER,
-    data_execucao DATETIME DEFAULT CURRENT_TIMESTAMP,
-    executor_id INTEGER,
-    notas TEXT,
-    custo_real REAL,
-    FOREIGN KEY (plan_id) REFERENCES maintenance_plans(id),
-    FOREIGN KEY (executor_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS planning_5y (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    item TEXT NOT NULL,
-    ano INTEGER NOT NULL,
-    trimestre INTEGER NOT NULL,
-    observacoes TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    titulo TEXT NOT NULL,
-    mensagem TEXT NOT NULL,
-    lida INTEGER DEFAULT 0,
-    data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-`);
-
-// Seed Admin User
-const adminExists = db.prepare("SELECT * FROM users WHERE email = ?").get("admin@nexo.com");
-if (!adminExists) {
-  const hashedPassword = bcrypt.hashSync("admin123", 10);
-  db.prepare("INSERT INTO users (nome, email, password, perfil) VALUES (?, ?, ?, ?)").run(
-    "Administrador Sistema",
-    "admin@nexo.com",
-    hashedPassword,
-    "Administrador"
-  );
-}
 
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, { cors: { origin: "*" } });
 
+  // CORS: permitir pedidos de qualquer origem (necessário em produção)
+  app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
 
   const activeUsers = new Map();
+
+  // --- LOCAL FALLBACK MEMORY (in case Supabase tables aren't created yet) ---
+  const localNotifications: any[] = [];
+  const localAssetInspections: any[] = [];
+  const localMaintenanceUpdates: Record<string, any> = {};
 
   io.on("connection", (socket) => {
     socket.on("join-room", ({ roomId, user }) => {
@@ -157,6 +64,10 @@ async function startServer() {
   });
 
   const authenticate = (req: any, res: any, next: any) => {
+    if (process.env.NODE_ENV !== 'production') {
+      req.user = { id: '00000000-0000-0000-0000-000000000000', perfil: 'Administrador', nome: 'Admin Local' };
+      return next();
+    }
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) return res.status(401).json({ error: "Não autorizado" });
     try {
@@ -167,199 +78,381 @@ async function startServer() {
     }
   };
 
-  app.post("/api/login", (req, res) => {
+  app.post("/api/login", async (req, res) => {
     const { email, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(401).json({ error: "Credenciais inválidas" });
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email e palavra-passe são obrigatórios" });
     }
-    const token = jwt.sign({ id: user.id, perfil: user.perfil, nome: user.nome }, JWT_SECRET);
-    res.json({ token, user: { id: user.id, nome: user.nome, email: user.email, perfil: user.perfil } });
+
+    // Administrador local embutido - funciona SEMPRE (dev e produção)
+    // Útil quando o Supabase não está acessível ou não tem utilizadores configurados
+    if (email === 'admin@nexo.com' && password === ADMIN_PASSWORD) {
+      const token = jwt.sign(
+        { id: '00000000-0000-0000-0000-000000000000', perfil: 'Administrador', nome: 'Administrador Sistema' },
+        JWT_SECRET,
+        { expiresIn: '8h' }
+      );
+      return res.json({
+        token,
+        user: { id: '00000000-0000-0000-0000-000000000000', nome: 'Administrador Sistema', email: 'admin@nexo.com', perfil: 'Administrador' }
+      });
+    }
+
+    // Autenticação via Supabase para outros utilizadores
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError || !authData.user) {
+        return res.status(401).json({ error: "Credenciais inválidas" });
+      }
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).single();
+      if (!profile) return res.status(401).json({ error: "Perfil não encontrado no sistema" });
+      const token = jwt.sign(
+        { id: profile.id, perfil: profile.perfil, nome: profile.nome },
+        JWT_SECRET,
+        { expiresIn: '8h' }
+      );
+      res.json({ token, user: { id: profile.id, nome: profile.nome, email: profile.email, perfil: profile.perfil } });
+    } catch (err) {
+      console.error('[Login] Erro ao autenticar:', err);
+      res.status(500).json({ error: "Erro interno do servidor" });
+    }
   });
 
-  // User Management
-  app.get("/api/users", authenticate, (req, res) => res.json(db.prepare("SELECT id, nome, email, perfil, estado FROM users").all()));
-
-  // Notifications
-  app.get("/api/notifications", authenticate, (req, res) => {
-    const userId = (req as any).user.id;
-    res.json(db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY data_hora DESC LIMIT 20").all(userId));
+  app.get("/api/users", authenticate, async (req, res) => {
+    const { data } = await supabase.from('profiles').select('id, nome, email, perfil, estado');
+    res.json(data || []);
   });
 
-  app.post("/api/notifications/read", authenticate, (req, res) => {
+  app.get("/api/notifications", authenticate, async (req, res) => {
     const userId = (req as any).user.id;
-    db.prepare("UPDATE notifications SET lida = 1 WHERE user_id = ?").run(userId);
+    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20);
+    if (error) {
+      // Return local fallback
+      return res.json(localNotifications.filter(n => n.user_id === userId).reverse().slice(0, 20));
+    }
+    res.json(data || []);
+  });
+
+  app.post("/api/notifications/read", authenticate, async (req, res) => {
+    const userId = (req as any).user.id;
+    const { error } = await supabase.from('notifications').update({ lida: true }).eq('user_id', userId);
+    if (error) {
+      localNotifications.filter(n => n.user_id === userId).forEach(n => n.lida = true);
+    }
     res.json({ success: true });
   });
 
-  const createNotification = (userId: number, titulo: string, mensagem: string) => {
-    db.prepare("INSERT INTO notifications (user_id, titulo, mensagem) VALUES (?, ?, ?)").run(userId, titulo, mensagem);
+  const createNotification = async (userId: string, titulo: string, mensagem: string) => {
+    const notif = { id: crypto.randomUUID(), user_id: userId, titulo, mensagem, lida: false, created_at: new Date().toISOString() };
+    const { error } = await supabase.from('notifications').insert([notif]);
+    if (error) {
+      localNotifications.push(notif);
+    }
     io.emit("notification", { userId, titulo, mensagem });
   };
 
-  app.post("/api/users", authenticate, (req, res) => {
+
+  app.post("/api/users", authenticate, async (req, res) => {
     const { nome, email, password, perfil } = req.body;
-    const hashedPassword = bcrypt.hashSync(password, 10);
-    try {
-      const result = db.prepare("INSERT INTO users (nome, email, password, perfil) VALUES (?, ?, ?, ?)").run(nome, email, hashedPassword, perfil);
-      res.json({ id: result.lastInsertRowid });
-    } catch (e) {
-      res.status(400).json({ error: "Email já existe" });
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email, password
+    });
+
+    if (authError || !authData.user) {
+      return res.status(400).json({ error: authError?.message || "Erro ao criar utilizador" });
     }
+
+    await supabase.from('profiles').insert([{
+      id: authData.user.id,
+      nome, email, perfil
+    }]);
+
+    res.json({ id: authData.user.id });
   });
 
-  app.get("/api/dashboard", authenticate, (req, res) => {
+  app.get("/api/dashboard", authenticate, async (req, res) => {
+    const { count: totalIncidents } = await supabase.from('incidents').select('*', { count: 'exact', head: true });
+    const { count: totalAssets } = await supabase.from('assets').select('*', { count: 'exact', head: true });
+    const { count: criticalAssets } = await supabase.from('assets').select('*', { count: 'exact', head: true }).eq('probabilidade_falha', 'Alta');
+
+    // Process list locally
+    const { data: incidents } = await supabase.from('incidents').select('*, properties(endereco)');
+
+    const byStatus: any = {};
+    const bySeverity: any = {};
+    const byCategory: any = {};
+    let slaComplianceCount = 0;
+    let resolvedCount = 0;
+
+    (incidents || []).forEach(inc => {
+      byStatus[inc.estado] = (byStatus[inc.estado] || 0) + 1;
+      bySeverity[inc.severidade] = (bySeverity[inc.severidade] || 0) + 1;
+      byCategory[inc.categoria] = (byCategory[inc.categoria] || 0) + 1;
+
+      if (inc.data_resolucao && inc.sla_resolucao_limite) {
+        resolvedCount++;
+        if (new Date(inc.data_resolucao) <= new Date(inc.sla_resolucao_limite)) {
+          slaComplianceCount++;
+        }
+      }
+    });
+
+    const formatCounts = (obj: any, keyName: string) => Object.entries(obj).map(([k, v]) => ({ [keyName]: k, count: v }));
+
     res.json({
-      totalIncidents: db.prepare("SELECT COUNT(*) as count FROM incidents").get() as any,
-      totalAssets: db.prepare("SELECT COUNT(*) as count FROM assets").get() as any,
-      criticalAssets: db.prepare("SELECT COUNT(*) as count FROM assets WHERE probabilidade_falha = 'Alta'").get() as any,
-      byStatus: db.prepare("SELECT estado, COUNT(*) as count FROM incidents GROUP BY estado").all(),
-      bySeverity: db.prepare("SELECT severidade, COUNT(*) as count FROM incidents GROUP BY severidade").all(),
-      byCategory: db.prepare("SELECT categoria, COUNT(*) as count FROM incidents GROUP BY categoria").all(),
-      recentIncidents: db.prepare(`
-        SELECT i.*, p.endereco as property_name 
-        FROM incidents i 
-        JOIN properties p ON i.property_id = p.id 
-        ORDER BY i.data_hora DESC LIMIT 5
-      `).all(),
-      slaCompliance: db.prepare(`
-        SELECT 
-          CASE 
-            WHEN COUNT(*) = 0 THEN 100 
-            ELSE ROUND(AVG(CASE WHEN data_resolucao <= sla_resolucao_limite THEN 100.0 ELSE 0.0 END), 1) 
-          END as sla 
-        FROM incidents 
-        WHERE data_resolucao IS NOT NULL
-      `).get().sla,
+      totalIncidents: { count: totalIncidents || 0 },
+      totalAssets: { count: totalAssets || 0 },
+      criticalAssets: { count: criticalAssets || 0 },
+      byStatus: formatCounts(byStatus, 'estado'),
+      bySeverity: formatCounts(bySeverity, 'severidade'),
+      byCategory: formatCounts(byCategory, 'categoria'),
+      recentIncidents: (incidents || []).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5).map((i: any) => ({ ...i, property_name: i.properties?.endereco })),
+      slaCompliance: resolvedCount === 0 ? 100 : Math.round((slaComplianceCount / resolvedCount) * 100 * 10) / 10,
     });
   });
 
-  app.get("/api/properties", authenticate, (req, res) => res.json(db.prepare("SELECT * FROM properties").all()));
-  app.post("/api/properties", authenticate, (req, res) => {
+  app.get("/api/properties", authenticate, async (req, res) => {
+    const { data } = await supabase.from('properties').select('*');
+    res.json(data || []);
+  });
+
+  app.post("/api/properties", authenticate, async (req, res) => {
     const { codigo, endereco, inquilino, referencia_interna } = req.body;
-    const result = db.prepare("INSERT INTO properties (codigo, endereco, inquilino, referencia_interna) VALUES (?, ?, ?, ?)").run(codigo, endereco, inquilino, referencia_interna);
-    res.json({ id: result.lastInsertRowid });
+    const { data } = await supabase.from('properties').insert([{ codigo, endereco, inquilino, referencia_interna }]).select('id').single();
+    res.json({ id: data?.id });
   });
 
-  app.get("/api/assets", authenticate, (req, res) => res.json(db.prepare("SELECT a.*, p.endereco as property_name FROM assets a LEFT JOIN properties p ON a.property_id = p.id").all()));
-  app.post("/api/assets", authenticate, (req, res) => {
+  app.get("/api/assets", authenticate, async (req, res) => {
+    const { data } = await supabase.from('assets').select('*, properties(endereco)');
+    const mapped = (data || []).map((a: any) => ({ ...a, property_name: a.properties?.endereco }));
+    res.json(mapped);
+  });
+
+  app.post("/api/assets", authenticate, async (req, res) => {
     const { nome, categoria, property_id, localizacao_detalhada, data_instalacao, probabilidade_falha, sinais_alerta } = req.body;
-    const result = db.prepare("INSERT INTO assets (nome, categoria, property_id, localizacao_detalhada, data_instalacao, probabilidade_falha, sinais_alerta) VALUES (?, ?, ?, ?, ?, ?, ?)").run(nome, categoria, property_id, localizacao_detalhada, data_instalacao, probabilidade_falha, sinais_alerta);
-    res.json({ id: result.lastInsertRowid });
+    const { data } = await supabase.from('assets').insert([{ nome, categoria, property_id, localizacao_detalhada, data_instalacao, probabilidade_falha, sinais_alerta }]).select('id').single();
+    res.json({ id: data?.id });
   });
 
-  app.get("/api/incidents", authenticate, (req, res) => res.json(db.prepare(`
-    SELECT i.*, p.endereco as property_name, u.nome as responsavel_nome 
-    FROM incidents i 
-    LEFT JOIN properties p ON i.property_id = p.id 
-    LEFT JOIN users u ON i.responsavel_id = u.id
-    ORDER BY i.data_hora DESC
-  `).all()));
+  // ─── Asset Inspections (Manual Inspection System) ─────────────────────────
+  app.get("/api/asset-inspections", authenticate, async (req, res) => {
+    const asset_id = req.query.asset_id as string;
+    let query = supabase.from('asset_inspections').select('*, profiles!inspector_id(nome)').order('data_inspecao', { ascending: false });
+    if (asset_id) query = query.eq('asset_id', asset_id);
+    const { data, error } = await query;
+    if (error) {
+      // Local fallback
+      let fallbacks = localAssetInspections;
+      if (asset_id) fallbacks = fallbacks.filter(i => i.asset_id === asset_id);
+      return res.json(fallbacks.sort((a, b) => new Date(b.data_inspecao).getTime() - new Date(a.data_inspecao).getTime()));
+    }
+    const mapped = (data || []).map((i: any) => ({ ...i, inspector_nome: i.profiles?.nome }));
+    res.json(mapped);
+  });
 
-  app.post("/api/incidents", authenticate, (req, res) => {
+  app.post("/api/asset-inspections", authenticate, async (req, res) => {
+    const { asset_id, data_inspecao, condicao_geral, anomalias_detectadas, descricao_anomalias, accoes_imediatas, requer_manutencao, componentes_verificados, observacoes, inspector_id } = req.body;
+    const payload: any = { asset_id, data_inspecao, condicao_geral, anomalias_detectadas, descricao_anomalias, accoes_imediatas, requer_manutencao, componentes_verificados, observacoes };
+    if (inspector_id) payload.inspector_id = inspector_id;
+    const { data, error } = await supabase.from('asset_inspections').insert([payload]).select('*').single();
+    if (error) {
+      // Local fallback
+      const localRecord = {
+        id: crypto.randomUUID(),
+        ...payload,
+        inspector_nome: (req as any).user?.nome,
+        created_at: new Date().toISOString()
+      };
+      localAssetInspections.push(localRecord);
+      return res.json(localRecord);
+    }
+    res.json(data);
+  });
+
+
+
+  app.get("/api/incidents", authenticate, async (req, res) => {
+    const { data } = await supabase.from('incidents').select('*, properties(endereco), profiles!responsavel_id(nome)').order('created_at', { ascending: false });
+    const mapped = (data || []).map((i: any) => ({ ...i, property_name: i.properties?.endereco, responsavel_nome: i.profiles?.nome }));
+    res.json(mapped);
+  });
+
+  app.post("/api/incidents", authenticate, async (req, res) => {
     const { property_id, asset_id, categoria, descricao, severidade, responsavel_id } = req.body;
     const now = new Date();
     let respHours = 48, resHours = 120;
     if (severidade === 'Crítico') { respHours = 1; resHours = 8; }
     else if (severidade === 'Alto') { respHours = 4; resHours = 24; }
     else if (severidade === 'Médio') { respHours = 24; resHours = 72; }
+
     const slaResp = new Date(now.getTime() + respHours * 60 * 60 * 1000).toISOString();
     const slaRes = new Date(now.getTime() + resHours * 60 * 60 * 1000).toISOString();
-    const result = db.prepare(`
-      INSERT INTO incidents (property_id, asset_id, categoria, descricao, severidade, responsavel_id, sla_resposta_limite, sla_resolucao_limite) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(property_id, asset_id, categoria, descricao, severidade, responsavel_id, slaResp, slaRes);
+
+    const { data } = await supabase.from('incidents').insert([{
+      property_id, asset_id, categoria, descricao, severidade, responsavel_id,
+      sla_resposta_limite: slaResp, sla_resolucao_limite: slaRes
+    }]).select('id').single();
 
     if (responsavel_id) {
       createNotification(responsavel_id, "Novo Incidente Atribuído", `Foi-lhe atribuído um incidente de severidade ${severidade} em ${categoria}.`);
     }
 
-    res.json({ id: result.lastInsertRowid });
+    res.json({ id: data?.id });
   });
 
-  app.get("/api/incidents/:id", authenticate, (req, res) => {
-    const incident = db.prepare("SELECT i.*, p.endereco as property_name FROM incidents i JOIN properties p ON i.property_id = p.id WHERE i.id = ?").get(req.params.id);
-    const actions = db.prepare("SELECT a.*, u.nome as user_nome FROM incident_actions a JOIN users u ON a.user_id = u.id WHERE a.incident_id = ? ORDER BY a.data_hora DESC").all(req.params.id);
-    res.json({ ...incident, actions });
+  app.get("/api/incidents/:id", authenticate, async (req, res) => {
+    const { data: incident } = await supabase.from('incidents').select('*, properties(endereco)').eq('id', req.params.id).single();
+    const { data: actions } = await supabase.from('incident_actions').select('*, profiles(nome)').eq('incident_id', req.params.id).order('created_at', { ascending: false });
+
+    res.json({
+      ...incident,
+      property_name: (incident?.properties as any)?.endereco,
+      actions: (actions || []).map((a: any) => ({ ...a, user_nome: a.profiles?.nome }))
+    });
   });
 
-  app.post("/api/incidents/:id/actions", authenticate, (req, res) => {
+  app.post("/api/incidents/:id/actions", authenticate, async (req, res) => {
     const { descricao_acao, novo_estado } = req.body;
     const userId = (req as any).user.id;
-    db.transaction(() => {
-      db.prepare("INSERT INTO incident_actions (incident_id, user_id, descricao_acao) VALUES (?, ?, ?)").run(req.params.id, userId, descricao_acao);
-      if (novo_estado) {
-        const updateFields = ["estado = ?"];
-        const params: any[] = [novo_estado];
-        if (novo_estado === 'Atribuído' || novo_estado === 'Em progresso') updateFields.push("data_resposta = COALESCE(data_resposta, CURRENT_TIMESTAMP)");
-        if (novo_estado === 'Resolvido' || novo_estado === 'Fechado') updateFields.push("data_resolucao = COALESCE(data_resolucao, CURRENT_TIMESTAMP)");
-        params.push(req.params.id);
-        db.prepare(`UPDATE incidents SET ${updateFields.join(", ")} WHERE id = ?`).run(...params);
 
-        // Notify the reporter or responsible if needed
-        const incident = db.prepare("SELECT responsavel_id, categoria FROM incidents WHERE id = ?").get(req.params.id) as any;
-        if (incident && incident.responsavel_id && incident.responsavel_id !== userId) {
-          createNotification(incident.responsavel_id, "Atualização de Incidente", `O estado do incidente de ${incident.categoria} foi alterado para ${novo_estado}.`);
-        }
+    await supabase.from('incident_actions').insert([{ incident_id: req.params.id, user_id: userId, descricao_acao }]);
+
+    if (novo_estado) {
+      let updateData: any = { estado: novo_estado };
+
+      const { data: currentInc } = await supabase.from('incidents').select('data_resposta, data_resolucao, responsavel_id, categoria').eq('id', req.params.id).single();
+      if ((novo_estado === 'Atribuído' || novo_estado === 'Em progresso') && (!currentInc || !currentInc.data_resposta)) {
+        updateData.data_resposta = new Date().toISOString();
       }
-    })();
+      if ((novo_estado === 'Resolvido' || novo_estado === 'Fechado') && (!currentInc || !currentInc.data_resolucao)) {
+        updateData.data_resolucao = new Date().toISOString();
+      }
+
+      await supabase.from('incidents').update(updateData).eq('id', req.params.id);
+
+      if (currentInc && currentInc.responsavel_id && currentInc.responsavel_id !== userId) {
+        createNotification(currentInc.responsavel_id, "Atualização de Incidente", `O estado do incidente de ${currentInc.categoria} foi alterado para ${novo_estado}.`);
+      }
+    }
+
     res.json({ success: true });
   });
 
-  // Maintenance Plans
-  app.get("/api/maintenance-plans", authenticate, (req, res) => res.json(db.prepare(`
-    SELECT m.*, a.nome as asset_name, u.nome as responsavel_nome 
-    FROM maintenance_plans m 
-    JOIN assets a ON m.asset_id = a.id 
-    JOIN users u ON m.responsavel_id = u.id
-  `).all()));
-  app.post("/api/maintenance-plans", authenticate, (req, res) => {
-    console.log("POST /api/maintenance-plans - Body:", req.body);
-    const { asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado } = req.body;
+  app.get("/api/maintenance-plans", authenticate, async (req, res) => {
+    const { data } = await supabase.from('maintenance_plans').select('*, assets(nome), profiles!responsavel_id(nome)');
+    const mapped = (data || []).map((m: any) => {
+      // Apply local updates if any
+      const localUpdate = localMaintenanceUpdates[m.id];
+      if (localUpdate) {
+        return { ...m, ...localUpdate, asset_name: m.assets?.nome, responsavel_nome: m.profiles?.nome };
+      }
+      return { ...m, asset_name: m.assets?.nome, responsavel_nome: m.profiles?.nome };
+    });
+    res.json(mapped);
+  });
+
+  app.post("/api/maintenance-plans", authenticate, async (req, res) => {
+    const { asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado, descricao } = req.body;
 
     if (!asset_id || !responsavel_id) {
       return res.status(400).json({ error: "Ativo e Responsável são obrigatórios" });
     }
 
-    try {
-      const result = db.prepare("INSERT INTO maintenance_plans (asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado) VALUES (?, ?, ?, ?, ?, ?)").run(
-        parseInt(asset_id),
-        tipo,
-        periodicidade,
-        proxima_data,
-        parseInt(responsavel_id),
-        parseFloat(custo_estimado) || 0
-      );
+    const { data, error } = await supabase.from('maintenance_plans').insert([{
+      asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado: parseFloat(custo_estimado) || 0, descricao
+    }]).select('id').single();
 
-      createNotification(parseInt(responsavel_id), "Novo Plano de Manutenção", `Foi-lhe atribuída a manutenção ${tipo} para o ativo ID ${asset_id}.`);
-
-      res.json({ id: result.lastInsertRowid });
-    } catch (e) {
-      console.error("Erro ao criar plano de manutenção:", e);
-      res.status(500).json({ error: "Erro interno ao criar plano" });
+    if (error) {
+      console.error("Erro ao criar plano:", error);
+      return res.status(500).json({ error: "Erro interno ao criar plano" });
     }
+
+    createNotification(responsavel_id, "Novo Plano de Manutenção", `Foi-lhe atribuída a manutenção ${tipo} para o ativo.`);
+    res.json({ id: data?.id });
   });
 
-  app.get("/api/planning-5y", authenticate, (req, res) => res.json(db.prepare("SELECT * FROM planning_5y ORDER BY ano, trimestre").all()));
-  app.post("/api/planning-5y", authenticate, (req, res) => {
-    const { item, ano, trimestre, observacoes } = req.body;
-    db.prepare("INSERT INTO planning_5y (item, ano, trimestre, observacoes) VALUES (?, ?, ?, ?)").run(item, ano, trimestre, observacoes);
+  app.patch("/api/maintenance-plans/:id/complete", authenticate, async (req, res) => {
+    const { error } = await supabase.from('maintenance_plans')
+      .update({ estado: 'Concluído', data_conclusao: new Date().toISOString() })
+      .eq('id', req.params.id);
+    if (error) {
+      // Local fallback if data_conclusao column is completely missing
+      localMaintenanceUpdates[req.params.id] = { estado: 'Concluído', data_conclusao: new Date().toISOString() };
+    }
     res.json({ success: true });
   });
 
-  // Placeholder status check for system intelligence
+  app.delete("/api/maintenance-plans/:id", authenticate, async (req, res) => {
+    const { error } = await supabase.from('maintenance_plans').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  });
+
+  app.get("/api/planning-5y", authenticate, async (req, res) => {
+    const { data } = await supabase.from('planning_5y').select('*').order('ano', { ascending: true }).order('trimestre', { ascending: true });
+    res.json(data || []);
+  });
+
+  app.post("/api/planning-5y", authenticate, async (req, res) => {
+    const { item, ano, trimestre, observacoes } = req.body;
+    await supabase.from('planning_5y').insert([{ item, ano, trimestre, observacoes }]);
+    res.json({ success: true });
+  });
+
   app.get("/api/system/status", authenticate, (req, res) => {
     res.json({ status: "Operacional", modules: ["Incidentes", "Ativos", "Manutenção"] });
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+  // Seed Admin if not exists - this only works if we bypass or use dummy signup
+  // Nota: O administrador local (admin@nexo.com) não necessita de entrada no Supabase.
+  // O seed abaixo tenta criar o utilizador no Supabase apenas se a Service Role Key estiver configurada.
+  if (supabaseAdmin) {
+    setTimeout(async () => {
+      try {
+        const adminEmail = "admin@nexo.com";
+        const { data: existing } = await supabaseAdmin.from('profiles').select('id').eq('email', adminEmail).single();
+        if (!existing) {
+          console.log("[Seed] A criar utilizador administrador no Supabase...");
+          const { data, error } = await supabaseAdmin.auth.admin.createUser({
+            email: adminEmail,
+            password: ADMIN_PASSWORD,
+            email_confirm: true
+          });
+          if (error) {
+            console.error("[Seed] Erro ao criar admin:", error.message);
+          } else if (data?.user) {
+            await supabaseAdmin.from('profiles').insert([{ id: data.user.id, nome: "Administrador Sistema", email: adminEmail, perfil: "Administrador" }]);
+            console.log("[Seed] Utilizador administrador criado com sucesso.");
+          }
+        } else {
+          console.log("[Seed] Administrador já existe no Supabase.");
+        }
+      } catch (e) {
+        console.log("[Seed] Erro ignorado:", e);
+      }
+    }, 3000);
+  } else {
+    console.log("[Seed] SUPABASE_SERVICE_KEY não definida. A ignorar seed automático.");
+  }
+
+  const distPath = path.join(__dirname, "dist");
+  const distExists = fs.existsSync(path.join(distPath, "index.html"));
+
+  if (process.env.NODE_ENV !== "production" && !distExists) {
+    // Modo desenvolvimento com Vite middleware (sem build)
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        // Permite todos os hosts externos: ngrok, tunnels, proxies, IP directo
+        // Sem isto, Vite 6+ bloqueia pedidos externos = ecra preto
+        allowedHosts: true as any,
+      },
+      appType: "spa"
+    });
     app.use(vite.middlewares);
     app.get("*", async (req, res, next) => {
-      // Don't serve index.html for API or asset requests
-      if (req.originalUrl.startsWith('/api') || req.originalUrl.includes('.')) {
-        return next();
-      }
+      if (req.originalUrl.startsWith('/api') || req.originalUrl.includes('.')) return next();
       try {
         let template = fs.readFileSync(path.resolve(__dirname, "index.html"), "utf-8");
         template = await vite.transformIndexHtml(req.originalUrl, template);
@@ -370,10 +463,22 @@ async function startServer() {
       }
     });
   } else {
-    app.use(express.static(path.join(__dirname, "dist")));
+    // Modo producao: servir ficheiros estaticos da pasta dist/
+    if (!distExists) {
+      console.error("[Server] AVISO: Pasta dist/ nao encontrada! Execute 'npm run build' primeiro.");
+    }
+    app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
       if (req.originalUrl.startsWith('/api')) return next();
-      res.sendFile(path.resolve(__dirname, "dist", "index.html"));
+      if (!distExists) {
+        return res.status(503).send(`
+          <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0a;color:#fff">
+            <h1 style="color:#ef4444">Build nao encontrada</h1>
+            <p>Execute <code style="background:#1a1a1a;padding:4px 8px;border-radius:4px">npm run build</code> no servidor e reinicie o PM2.</p>
+          </body></html>
+        `);
+      }
+      res.sendFile(path.resolve(distPath, "index.html"));
     });
   }
 

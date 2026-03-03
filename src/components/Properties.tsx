@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, MapPin, Building2, User, Hash, Search, Filter, MoreVertical, X, ArrowUpRight, Globe } from 'lucide-react';
+import {
+  Plus, Building2, User, Hash, Search, X, Globe,
+  Cpu, Activity, AlertCircle, Wrench, ChevronRight,
+  ArrowLeft, MapPin, Settings, Eye
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { canCreateProperties } from '../utils/permissions';
 
-export default function Properties({ onSelectProperty }: { onSelectProperty: (id: number) => void }) {
+export default function Properties({ onSelectProperty }: { onSelectProperty: (id: string) => void }) {
   const [properties, setProperties] = useState<any[]>([]);
+  const [assets, setAssets] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedProperty, setSelectedProperty] = useState<any>(null);
+  const [search, setSearch] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const [formData, setFormData] = useState({
     codigo: '',
@@ -16,16 +24,25 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
     referencia_interna: ''
   });
 
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
   useEffect(() => {
-    fetchProperties();
+    fetchAll();
   }, []);
 
-  const fetchProperties = async () => {
-    const res = await fetch('/api/properties', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setProperties(data);
+  const fetchAll = async () => {
+    const token = localStorage.getItem('token');
+    const headers = { Authorization: `Bearer ${token}` };
+    const [propRes, assetRes] = await Promise.all([
+      fetch('/api/properties', { headers }),
+      fetch('/api/assets', { headers }),
+    ]);
+    const [propData, assetData] = await Promise.all([propRes.json(), assetRes.json()]);
+    setProperties(propData || []);
+    setAssets(assetData || []);
     setLoading(false);
   };
 
@@ -35,186 +52,408 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
     try {
       const res = await fetch('/api/properties', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
       if (res.ok) {
-        alert('Propriedade adicionada com sucesso!');
         setIsModalOpen(false);
-        fetchProperties();
+        fetchAll();
         setFormData({ codigo: '', endereco: '', inquilino: '', referencia_interna: '' });
+        showToast('✅ Propriedade registada com sucesso!');
       } else {
-        const errorData = await res.json();
-        alert(errorData.error || 'Erro ao adicionar propriedade');
+        const err = await res.json();
+        showToast(err.error || 'Erro ao adicionar propriedade');
       }
-    } catch (err) {
-      console.error(err);
-      alert('Erro de rede ao tentar adicionar a propriedade');
+    } catch {
+      showToast('Erro de rede. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const getAssetsForProperty = (propId: string) => assets.filter(a => a.property_id === propId);
+
+  const filtered = properties.filter(p =>
+    !search ||
+    p.endereco?.toLowerCase().includes(search.toLowerCase()) ||
+    p.inquilino?.toLowerCase().includes(search.toLowerCase()) ||
+    p.codigo?.toLowerCase().includes(search.toLowerCase())
+  );
+
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
       <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-      <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar Portfólio de Ativos...</p>
+      <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar Propriedades...</p>
     </div>
   );
 
+  // Property Detail View
+  if (selectedProperty) {
+    const propAssets = getAssetsForProperty(selectedProperty.id);
+    return (
+      <div className="space-y-5 page-enter">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSelectedProperty(null)}
+            className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors font-bold text-[10px] uppercase tracking-widest"
+          >
+            <ArrowLeft size={13} />
+            Todas as Propriedades
+          </button>
+          <ChevronRight size={12} className="text-gray-600" />
+          <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">{selectedProperty.endereco}</span>
+        </div>
+
+        {/* Property Header */}
+        <div className="bg-brand-surface border border-brand-border p-6 flex flex-col md:flex-row md:items-start gap-4 justify-between">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
+              <Building2 size={22} />
+            </div>
+            <div>
+              <p className="text-[9px] font-mono text-gray-500 uppercase tracking-widest mb-1">
+                PROPRIEDADE #{selectedProperty.codigo}
+              </p>
+              <h2 className="text-lg font-bold text-white tracking-tight">{selectedProperty.endereco}</h2>
+              <div className="flex flex-wrap gap-4 mt-2">
+                {selectedProperty.inquilino && (
+                  <span className="text-[10px] text-gray-400 flex items-center gap-1.5">
+                    <User size={11} className="text-gray-600" /> {selectedProperty.inquilino}
+                  </span>
+                )}
+                {selectedProperty.referencia_interna && (
+                  <span className="text-[10px] text-gray-400 flex items-center gap-1.5">
+                    <Hash size={11} className="text-gray-600" /> {selectedProperty.referencia_interna}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => onSelectProperty(selectedProperty.id)}
+              className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold hover:bg-emerald-500/20 transition-all flex items-center gap-2"
+            >
+              <Eye size={13} />
+              Ver em Inspecções
+            </button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: 'Total de Ativos', value: propAssets.length, icon: Cpu, color: 'text-emerald-500' },
+            { label: 'Risco Alto', value: propAssets.filter(a => a.probabilidade_falha === 'Alta').length, icon: AlertCircle, color: 'text-red-500' },
+            { label: 'Risco Médio', value: propAssets.filter(a => a.probabilidade_falha === 'Média').length, icon: Activity, color: 'text-amber-500' },
+            { label: 'Risco Baixo', value: propAssets.filter(a => a.probabilidade_falha !== 'Alta' && a.probabilidade_falha !== 'Média').length, icon: Settings, color: 'text-blue-500' },
+          ].map((s, i) => (
+            <div key={i} className="bg-brand-surface border border-brand-border p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <s.icon size={13} className={s.color} />
+                <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{s.label}</p>
+              </div>
+              <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Assets list */}
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+            Ativos desta Propriedade ({propAssets.length})
+          </h3>
+          {propAssets.length === 0 ? (
+            <div className="bg-brand-surface border border-brand-border p-10 text-center">
+              <Cpu size={28} className="text-gray-600 mx-auto mb-3" />
+              <p className="text-sm font-bold text-gray-500">Nenhum ativo registado nesta propriedade</p>
+              <p className="text-xs text-gray-600 mt-1">Adicione ativos na secção "Ativos & Inspecções"</p>
+            </div>
+          ) : (
+            <div className="bg-brand-surface border border-brand-border overflow-hidden">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-white/[0.02]">
+                    <th className="col-header">Ativo</th>
+                    <th className="col-header">Categoria</th>
+                    <th className="col-header">Localização</th>
+                    <th className="col-header">Risco</th>
+                    <th className="col-header">Instalado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border">
+                  {propAssets.map(asset => (
+                    <tr key={asset.id} className="data-row">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-7 h-7 bg-white/5 border border-white/5 flex items-center justify-center text-emerald-500">
+                            <Cpu size={13} />
+                          </div>
+                          <span className="text-xs font-bold text-white">{asset.nome}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{asset.categoria}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] text-gray-500">{asset.localizacao_detalhada || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border ${asset.probabilidade_falha === 'Alta' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                            asset.probabilidade_falha === 'Média' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                              'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          }`}>
+                          {asset.probabilidade_falha || 'Baixa'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] font-mono text-gray-500">{asset.data_instalacao || '—'}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 page-enter">
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed top-4 right-4 z-[200] bg-brand-surface border border-brand-border shadow-2xl px-5 py-3 text-sm font-bold text-white"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-3.5 h-3.5" />
-            <input 
-              type="text" 
-              placeholder="Filtrar portfólio..." 
-              className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64 text-xs"
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Pesquisar propriedades..."
+              className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64 text-xs"
             />
           </div>
-          <button className="p-2 bg-brand-surface border border-brand-border rounded-xl hover:bg-white/5 transition-colors text-gray-400 flex items-center gap-2 px-4">
-            <Filter size={14} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Filtros</span>
-          </button>
+          <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/5">
+            <Building2 size={12} className="text-emerald-500" />
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{filtered.length} Propriedades</span>
+          </div>
         </div>
         {canCreateProperties(user.perfil) && (
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 text-xs"
+            className="bg-emerald-500 text-white px-6 py-2 rounded-none font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 text-xs"
           >
             <Plus size={16} />
-            Adicionar Propriedade
+            Registar Propriedade
           </button>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {properties.map((prop) => (
-          <motion.div 
-            layout
-            key={prop.id}
-            className="bg-brand-surface rounded-[24px] border border-brand-border hover:border-emerald-500/30 transition-all group overflow-hidden"
-          >
-            <div className="p-5">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-2.5 bg-white/5 rounded-xl text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all">
-                  <Building2 size={18} />
-                </div>
-                <span className="text-[10px] font-mono text-gray-600 font-bold">#{prop.codigo}</span>
-              </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-bold text-white text-sm tracking-tight group-hover:text-emerald-500 transition-colors truncate">{prop.endereco}</h3>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Globe size={10} className="text-gray-600" />
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Ativo Principal</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                    <User size={12} className="text-gray-600" />
-                    <span className="truncate">Inquilino: {prop.inquilino || 'N/A'}</span>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-brand-border flex items-center justify-between">
-                  <button 
-                    onClick={() => onSelectProperty(prop.id)}
-                    className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest hover:underline flex items-center gap-1"
-                  >
-                    Ver Ativos <ArrowUpRight size={10} />
-                  </button>
-                  <div className="flex -space-x-1.5">
-                    {[1,2].map(i => (
-                      <div key={i} className="w-5 h-5 rounded-full border border-brand-surface bg-gray-800 flex items-center justify-center text-[7px] font-bold">U{i}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        ))}
+      {/* Info banner — explains structure */}
+      <div className="flex items-start gap-3 p-4 bg-blue-500/5 border border-blue-500/10 text-xs text-blue-300">
+        <Building2 size={14} className="text-blue-400 shrink-0 mt-0.5" />
+        <p>
+          <strong className="text-blue-300">Propriedade</strong> é um imóvel ou instalação física (ex: edifício, escritório).
+          Cada propriedade pode ter vários <strong className="text-blue-300">Ativos</strong> (ex: ar condicionado, elevador, gerador).
+          Clique em "Ver Ativos" numa propriedade para ver os seus ativos e inspecções.
+        </p>
       </div>
 
+      {/* Property Grid */}
+      {filtered.length === 0 ? (
+        <div className="bg-brand-surface border border-brand-border p-12 text-center">
+          <Building2 size={32} className="text-gray-600 mx-auto mb-3" />
+          <p className="text-sm font-bold text-gray-500">
+            {search ? 'Nenhuma propriedade encontrada' : 'Nenhuma propriedade registada'}
+          </p>
+          {!search && canCreateProperties(user.perfil) && (
+            <button onClick={() => setIsModalOpen(true)} className="mt-4 px-4 py-2 bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-all">
+              + Registar primeira propriedade
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map((prop) => {
+            const propAssets = getAssetsForProperty(prop.id);
+            const highRisk = propAssets.filter(a => a.probabilidade_falha === 'Alta').length;
+            return (
+              <motion.div
+                layout
+                key={prop.id}
+                className="bg-brand-surface border border-brand-border hover:border-emerald-500/30 transition-all group overflow-hidden cursor-pointer"
+                onClick={() => setSelectedProperty(prop)}
+              >
+                <div className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="p-2.5 bg-white/5 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                      <Building2 size={18} />
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-[9px] font-mono text-gray-600 font-bold">#{prop.codigo}</span>
+                      {highRisk > 0 && (
+                        <span className="px-1.5 py-0.5 text-[8px] font-bold bg-red-500/10 border border-red-500/20 text-red-400 uppercase">
+                          {highRisk} Risco Alto
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="font-bold text-white text-sm tracking-tight group-hover:text-emerald-500 transition-colors">
+                        {prop.endereco}
+                      </h3>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-widest px-1.5 py-0.5 bg-white/5 border border-white/5">
+                          PROPRIEDADE
+                        </span>
+                      </div>
+                    </div>
+
+                    {prop.inquilino && (
+                      <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                        <User size={11} className="text-gray-600" />
+                        <span className="truncate">{prop.inquilino}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-3 border-t border-brand-border">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Cpu size={12} className="text-emerald-500" />
+                          <span className="text-[10px] font-bold text-gray-400">
+                            {propAssets.length} {propAssets.length === 1 ? 'Ativo' : 'Ativos'}
+                          </span>
+                        </div>
+                        <ChevronRight size={13} className="text-gray-600 group-hover:text-emerald-500 transition-colors" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ─── Add Property Modal ─── */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-brand-surface w-full max-w-md rounded-[32px] shadow-2xl relative z-10 overflow-hidden border border-brand-border"
-            >
-              <div className="p-6 bg-emerald-500 text-white flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-bold tracking-tight">Adicionar Propriedade</h2>
-                  <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-widest">Protocolo de Expansão de Portfólio</p>
+          <div className="fixed inset-0 z-[100] overflow-y-auto">
+            <div className="flex min-h-full items-start justify-center p-4 pt-8">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsModalOpen(false)}
+                className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="bg-brand-surface w-full max-w-md shadow-2xl border border-brand-border relative z-10 flex flex-col"
+              >
+                {/* Modal Header */}
+                <div className="p-6 bg-emerald-500 text-white flex items-center justify-between shrink-0">
+                  <div>
+                    <h2 className="text-lg font-bold tracking-tight">Registar Propriedade</h2>
+                    <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-widest mt-0.5">
+                      Nova propriedade ou instalação física
+                    </p>
+                  </div>
+                  <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 transition-colors">
+                    <X size={20} />
+                  </button>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleSubmit} className="p-8 space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Código Interno</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.codigo}
-                    onChange={(e) => setFormData({...formData, codigo: e.target.value})}
-                    placeholder="ex: PROP-001"
-                    className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Endereço Completo</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.endereco}
-                    onChange={(e) => setFormData({...formData, endereco: e.target.value})}
-                    placeholder="ex: Av. Liberdade, 123"
-                    className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Inquilino Principal</label>
-                  <input 
-                    type="text" 
-                    value={formData.inquilino}
-                    onChange={(e) => setFormData({...formData, inquilino: e.target.value})}
-                    placeholder="ex: TechCorp S.A."
-                    className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                  />
-                </div>
-                <button 
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full py-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                      A processar...
-                    </>
-                  ) : 'Registar Propriedade'}
-                </button>
-              </form>
-            </motion.div>
+
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Código Interno *</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.codigo}
+                      onChange={e => setFormData({ ...formData, codigo: e.target.value })}
+                      placeholder="ex: PROP-001"
+                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Endereço / Nome do Imóvel *</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.endereco}
+                      onChange={e => setFormData({ ...formData, endereco: e.target.value })}
+                      placeholder="ex: Av. Liberdade 123, Maputo"
+                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Inquilino / Responsável</label>
+                    <input
+                      type="text"
+                      value={formData.inquilino}
+                      onChange={e => setFormData({ ...formData, inquilino: e.target.value })}
+                      placeholder="ex: PETROMOC S.A."
+                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Referência Interna</label>
+                    <input
+                      type="text"
+                      value={formData.referencia_interna}
+                      onChange={e => setFormData({ ...formData, referencia_interna: e.target.value })}
+                      placeholder="ex: Contrato 2024/FM-007"
+                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-5 py-3 border border-brand-border text-gray-400 hover:text-white hover:border-gray-400 transition-colors font-bold text-xs uppercase tracking-widest"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="flex-1 py-3 bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {submitting ? (
+                        <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" /> A processar...</>
+                      ) : 'Registar Propriedade'}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
           </div>
         )}
       </AnimatePresence>

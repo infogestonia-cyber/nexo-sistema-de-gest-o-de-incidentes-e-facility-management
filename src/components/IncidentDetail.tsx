@@ -22,7 +22,7 @@ import Markdown from 'react-markdown';
 import socket from '../services/socketService';
 import { canUpdateIncidents } from '../utils/permissions';
 
-export default function IncidentDetail({ id, onBack }: { id: number, onBack: () => void }) {
+export default function IncidentDetail({ id, onBack }: { id: string, onBack: () => void }) {
   const [incident, setIncident] = useState<any>(null);
   const [actionDesc, setActionDesc] = useState('');
   const [newStatus, setNewStatus] = useState('');
@@ -121,7 +121,7 @@ export default function IncidentDetail({ id, onBack }: { id: number, onBack: () 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Details & Actions */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-brand-surface rounded-[32px] border border-brand-border overflow-hidden">
+          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
             <div className="p-6 bg-white/[0.02] border-b border-brand-border flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
@@ -186,7 +186,7 @@ export default function IncidentDetail({ id, onBack }: { id: number, onBack: () 
           </div>
 
           {/* Operational Log */}
-          <div className="bg-brand-surface rounded-[32px] border border-brand-border overflow-hidden">
+          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
             <div className="p-6 border-b border-brand-border flex items-center justify-between">
               <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
                 <Activity size={16} className="text-emerald-500" />
@@ -262,7 +262,7 @@ export default function IncidentDetail({ id, onBack }: { id: number, onBack: () 
         <div className="space-y-6">
           {/* AI Predictive Analysis */}
           {/* System Performance Card (formerly AI) */}
-          <div className="bg-brand-surface rounded-[32px] border border-brand-border overflow-hidden relative group">
+          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden relative group">
             <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
               <Activity size={80} />
             </div>
@@ -284,7 +284,7 @@ export default function IncidentDetail({ id, onBack }: { id: number, onBack: () 
 
           {/* AI Protocol Summary */}
           {/* Protocol Summary */}
-          <div className="bg-brand-surface rounded-[32px] border border-brand-border overflow-hidden">
+          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
             <div className="p-6 border-b border-brand-border flex items-center justify-between">
               <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
                 <MessageSquare size={16} className="text-blue-500" />

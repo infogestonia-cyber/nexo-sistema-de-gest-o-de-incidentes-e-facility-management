@@ -39,14 +39,16 @@ export default function Login({ onLogin }: LoginProps) {
   return (
     <div className="min-h-screen bg-brand-bg flex items-center justify-center p-6 font-sans selection:bg-emerald-500/30">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-emerald-500/5 rounded-full blur-[120px]"></div>
-        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-500/5 rounded-full blur-[120px]"></div>
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/10 rounded-full blur-[120px] animate-float"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-teal-500/10 rounded-full blur-[120px] animate-float-delayed"></div>
+        <div className="absolute top-[20%] right-[10%] w-[40%] h-[40%] bg-emerald-400/5 rounded-full blur-[100px] animate-float-slow"></div>
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[380px] bg-brand-surface rounded-[32px] shadow-2xl overflow-hidden relative z-10 border border-brand-border"
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[400px] bg-brand-surface/70 backdrop-blur-3xl rounded-[32px] shadow-2xl shadow-emerald-900/10 overflow-hidden relative z-10 border border-white/5"
       >
         <div className="p-8 text-center border-b border-brand-border bg-white/[0.02]">
           <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
@@ -96,7 +98,7 @@ export default function Login({ onLogin }: LoginProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50 uppercase tracking-widest text-[11px]"
+            className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 disabled:opacity-50 uppercase tracking-widest text-[11px] transform hover:-translate-y-0.5"
           >
             {loading ? 'A autenticar...' : (
               <>

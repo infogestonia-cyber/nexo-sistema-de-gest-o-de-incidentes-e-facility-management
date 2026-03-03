@@ -42,8 +42,8 @@ export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [selectedIncidentId, setSelectedIncidentId] = useState<number | null>(null);
-  const [propertyFilter, setPropertyFilter] = useState<number | null>(null);
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+  const [propertyFilter, setPropertyFilter] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -123,22 +123,29 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Centro de Comando', icon: LayoutDashboard },
-    { id: 'properties', label: 'Portfólio de Ativos', icon: Building2 },
-    { id: 'incidents', label: 'Matriz de Incidentes', icon: AlertCircle },
-    { id: 'assets', label: 'Gémeos Digitais', icon: Cpu },
-    { id: 'maintenance', label: 'Plano de Manutenção', icon: Wrench },
+    { id: 'properties', label: 'Propriedades', icon: Building2 },
+    { id: 'incidents', label: 'Incidentes', icon: AlertCircle },
+    { id: 'assets', label: 'Ativos & Inspecções', icon: Cpu },
+    { id: 'maintenance', label: 'Manutenção', icon: Wrench },
     { id: 'planning', label: 'Roteiro Estratégico', icon: Calendar },
-    { id: 'reports', label: 'Centro de Relatórios', icon: FileText, permission: canViewReports },
-    { id: 'users', label: 'Acesso ao Sistema', icon: UsersIcon, permission: canManageUsers },
+    { id: 'reports', label: 'Relatórios', icon: FileText, permission: canViewReports },
+    { id: 'users', label: 'Utilizadores', icon: UsersIcon, permission: canManageUsers },
   ];
 
+
   return (
-    <div className="min-h-screen bg-brand-bg flex font-sans text-gray-300 selection:bg-emerald-500/30 overflow-hidden">
+    <div className="min-h-screen bg-brand-bg flex font-sans text-gray-300 selection:bg-emerald-500/30 overflow-hidden relative">
+      {/* Global Animated Background Orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[50%] bg-emerald-500/5 rounded-full blur-[150px] animate-float"></div>
+        <div className="absolute bottom-[-20%] left-[-10%] w-[50%] h-[50%] bg-teal-500/5 rounded-full blur-[150px] animate-float-delayed"></div>
+      </div>
+
       {/* Premium Sidebar */}
       <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 240 : 80 }}
-        className="bg-brand-surface border-r border-brand-border flex flex-col sticky top-0 h-screen z-50 shrink-0"
+        className="bg-brand-surface/80 backdrop-blur-3xl border-r border-white/5 flex flex-col sticky top-0 h-screen z-50 shrink-0"
       >
         <div className="p-4 flex items-center justify-between">
           {isSidebarOpen && (
@@ -211,8 +218,8 @@ export default function App() {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <header className="h-12 border-b border-brand-border flex items-center justify-between px-6 shrink-0 relative z-10 bg-brand-surface/50 backdrop-blur-md">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
+        <header className="h-14 border-b border-white/5 flex items-center justify-between px-6 shrink-0 relative z-20 bg-brand-surface/40 backdrop-blur-xl">
           <div className="flex items-center gap-4">
             <h1 className="text-xs font-bold tracking-tight text-white">
               {selectedIncidentId ? 'Protocolo de Incidente' : navItems.find(i => i.id === activeTab)?.label}

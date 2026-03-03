@@ -99,7 +99,7 @@ export default function Reports() {
           <motion.div
             key={report.id}
             whileHover={{ y: -4 }}
-            className="bg-brand-surface p-6 rounded-[32px] border border-brand-border flex flex-col gap-6 group transition-all hover:border-emerald-500/30"
+            className="bg-brand-surface p-6 rounded-none border border-brand-border flex flex-col gap-6 group transition-all hover:border-emerald-500/30"
           >
             <div className="flex items-start justify-between">
               <div className={`p-4 rounded-2xl ${report.bgColor} ${report.color}`}>
@@ -132,7 +132,7 @@ export default function Reports() {
         ))}
       </div>
 
-      <div className="bg-brand-surface border border-brand-border p-6 rounded-[32px] flex items-center gap-6">
+      <div className="bg-brand-surface border border-brand-border p-6 rounded-none flex items-center gap-6">
         <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-gray-500 shrink-0">
           <FileText size={24} />
         </div>
