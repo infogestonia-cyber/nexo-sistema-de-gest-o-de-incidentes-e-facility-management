@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, ArrowUpRight, AlertCircle, Clock, CheckCircle2, X as XIcon, Activity } from 'lucide-react';
+import { Plus, Search, Filter, ArrowUpRight, AlertCircle, Clock, CheckCircle2, X as XIcon, Activity, ChevronDown, Trash2, Download, Calendar as CalendarIcon, LayoutGrid, List, User as UserIcon, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,6 +27,9 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [filterStatus, setFilterStatus] = useState('');
+  const [quickFilter, setQuickFilter] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const [formData, setFormData] = useState({
     property_id: '',
@@ -105,6 +108,111 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
     }
   };
 
+  const handleBatchUpdate = async (updates: any) => {
+    if (selectedIds.length === 0) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/incidents/batch', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ ids: selectedIds, updates })
+      });
+      if (res.ok) {
+        showToast(`✅ ${selectedIds.length} incidentes atualizados.`);
+        setSelectedIds([]);
+        fetchData();
+      }
+    } catch {
+      showToast('Erro ao atualizar em massa.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filtered.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map(i => i.id));
+    }
+  };
+
+  const toggleSelect = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const handleExport = () => {
+    if (filtered.length === 0) return;
+    
+    const headers = ['Protocolo', 'Categoria', 'Descricao', 'Propriedade', 'Severidade', 'Estado', 'Responsavel', 'Data'];
+    const rows = filtered.map(i => [
+      `#${i.id?.toString().slice(-4).toUpperCase()}`,
+      i.categoria,
+      i.descricao.replace(/,/g, ';'), // simple csv escape
+      i.property_name,
+      i.severidade,
+      i.estado,
+      i.responsavel_nome || 'Não Atribuído',
+      safeFormat(i.created_at, 'yyyy-MM-dd HH:mm')
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `incidentes_nexo_${format(new Date(), 'yyyyMMdd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('✅ Exportação concluída!');
+  };
+
+  const CalendarView = () => {
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay();
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
+
+    const getIncidentsForDay = (day: number) => {
+      const dateStr = format(new Date(new Date().getFullYear(), new Date().getMonth(), day), 'yyyy-MM-dd');
+      return filtered.filter(i => i.created_at?.startsWith(dateStr));
+    };
+
+    return (
+      <div className="bg-brand-surface border border-brand-border p-4">
+        <div className="grid grid-cols-7 gap-px bg-brand-border border border-brand-border">
+          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+            <div key={d} className="bg-white/[0.02] p-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest">{d}</div>
+          ))}
+          {blanks.map(b => <div key={`b-${b}`} className="bg-brand-surface h-32 opacity-20" />)}
+          {days.map(d => (
+            <div key={d} className="bg-brand-surface h-32 p-2 border-t border-brand-border relative overflow-hidden group hover:bg-white/[0.01] transition-all">
+              <span className="text-[10px] font-bold text-gray-600 group-hover:text-emerald-500 transition-colors">{d}</span>
+              <div className="mt-1 space-y-1">
+                {getIncidentsForDay(d).slice(0, 3).map(i => (
+                  <div key={i.id} onClick={() => onSelectIncident(i.id)} className="px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-bold text-emerald-400 truncate cursor-pointer hover:bg-emerald-500 hover:text-white transition-all">
+                    {i.categoria}
+                  </div>
+                ))}
+                {getIncidentsForDay(d).length > 3 && <p className="text-[8px] text-gray-500 text-center font-bold">+{getIncidentsForDay(d).length - 3} mais</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const severityConfig: Record<string, string> = {
     'Crítico': 'bg-red-500/10 text-red-400 border-red-500/20',
     'Alto': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
@@ -122,6 +230,14 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       || i.property_name?.toLowerCase().includes(search.toLowerCase())
       || i.descricao?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = !filterStatus || i.estado === filterStatus;
+    
+    if (quickFilter === 'high') return matchSearch && matchStatus && i.severidade === 'Crítico';
+    if (quickFilter === 'mine') return matchSearch && matchStatus && i.responsavel_id === currentUser.id;
+    if (quickFilter === 'overdue') {
+      const isOverdue = new Date(i.sla_resposta_limite) < new Date() && i.estado === 'Aberto';
+      return matchSearch && matchStatus && isOverdue;
+    }
+
     return matchSearch && matchStatus;
   });
 
@@ -165,6 +281,17 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
             <AlertCircle size={12} className="text-emerald-500" />
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{filtered.length} incidentes</span>
           </div>
+          <button onClick={handleExport} className="p-2 bg-brand-surface border border-brand-border text-gray-400 hover:text-emerald-500 transition-all" title="Exportar CSV">
+            <Download size={14} />
+          </button>
+          <div className="flex bg-brand-surface border border-brand-border p-1">
+            <button onClick={() => setViewMode('list')} className={`p-1 transition-all ${viewMode === 'list' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-500 hover:text-white'}`}>
+              <List size={14} />
+            </button>
+            <button onClick={() => setViewMode('calendar')} className={`p-1 transition-all ${viewMode === 'calendar' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-500 hover:text-white'}`}>
+              <CalendarIcon size={14} />
+            </button>
+          </div>
         </div>
         {canReportIncidents(currentUser.perfil) && (
           <button onClick={() => setIsModalOpen(true)}
@@ -174,11 +301,75 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
         )}
       </div>
 
-      {/* Incidents Table */}
-      <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-        <table className="w-full text-left">
+      {/* Quick Filters */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+        <button onClick={() => setQuickFilter('')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all ${!quickFilter ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
+          Todos
+        </button>
+        <button onClick={() => setQuickFilter('high')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${quickFilter === 'high' ? 'bg-red-500 text-white border-red-500' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
+          <AlertTriangle size={12} /> Alta Prioridade
+        </button>
+        <button onClick={() => setQuickFilter('mine')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${quickFilter === 'mine' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
+          <UserIcon size={12} /> Meus Protocolos
+        </button>
+        <button onClick={() => setQuickFilter('overdue')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${quickFilter === 'overdue' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
+          <Clock size={12} /> Atrasados
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div 
+            initial={{ y: 50, opacity: 0 }} 
+            animate={{ y: 0, opacity: 1 }} 
+            exit={{ y: 50, opacity: 0 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[150] bg-brand-surface border border-emerald-500/30 px-6 py-3 shadow-2xl flex items-center gap-6"
+          >
+            <div className="flex items-center gap-3 pr-6 border-r border-brand-border">
+              <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">{selectedIds.length} Selecionados</span>
+              <button onClick={() => setSelectedIds([])} className="text-gray-500 hover:text-white transition-colors"><XIcon size={14} /></button>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="group relative">
+                <button className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-white transition-all">
+                  Alterar Estado <ChevronDown size={12} />
+                </button>
+                <div className="absolute bottom-full left-0 mb-2 w-40 bg-brand-surface border border-brand-border shadow-2xl hidden group-hover:block">
+                  {['Aberto', 'Em progresso', 'Resolvido', 'Fechado'].map(s => (
+                    <button key={s} onClick={() => handleBatchUpdate({ estado: s })} className="w-full text-left px-4 py-2 text-[10px] text-gray-400 hover:bg-emerald-500 hover:text-white transition-all uppercase tracking-widest font-bold border-b border-brand-border last:border-0">{s}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="group relative">
+                <button className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-white transition-all">
+                  Severidade <ChevronDown size={12} />
+                </button>
+                <div className="absolute bottom-full left-0 mb-2 w-40 bg-brand-surface border border-brand-border shadow-2xl hidden group-hover:block">
+                  {SEVERITIES.map(s => (
+                    <button key={s} onClick={() => handleBatchUpdate({ severidade: s })} className="w-full text-left px-4 py-2 text-[10px] text-gray-400 hover:bg-emerald-500 hover:text-white transition-all uppercase tracking-widest font-bold border-b border-brand-border last:border-0">{s}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {viewMode === 'calendar' ? <CalendarView /> : (
+        <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
+          <table className="w-full text-left">
           <thead>
             <tr className="bg-white/[0.02]">
+              <th className="px-4 py-3 w-10">
+                <input 
+                  type="checkbox" 
+                  checked={selectedIds.length === filtered.length && filtered.length > 0} 
+                  onChange={toggleSelectAll}
+                  className="accent-emerald-500" 
+                />
+              </th>
               <th className="col-header">Protocolo</th>
               <th className="col-header">Localização</th>
               <th className="col-header">Severidade</th>
@@ -205,7 +396,15 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                 </td>
               </tr>
             ) : filtered.map((incident) => (
-              <tr key={incident.id} className="data-row cursor-pointer" onClick={() => onSelectIncident(incident.id)}>
+              <tr key={incident.id} className={`data-row cursor-pointer transition-all ${selectedIds.includes(incident.id) ? 'bg-emerald-500/5' : ''}`} onClick={() => onSelectIncident(incident.id)}>
+                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedIds.includes(incident.id)} 
+                    onChange={e => setSelectedIds(prev => prev.includes(incident.id) ? prev.filter(x => x !== incident.id) : [...prev, incident.id])}
+                    className="accent-emerald-500" 
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white/5 flex items-center justify-center text-[9px] font-mono font-bold text-emerald-500 border border-white/5 shrink-0">
@@ -247,6 +446,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
           </tbody>
         </table>
       </div>
+      )}
 
       {/* ─── Report Incident Modal ─── */}
       <AnimatePresence>

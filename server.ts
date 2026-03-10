@@ -47,6 +47,13 @@ async function startServer() {
   const localNotifications: any[] = [];
   const localAssetInspections: any[] = [];
   const localMaintenanceUpdates: Record<string, any> = {};
+  const localInventory: any[] = [];
+  const localIncidentChecklists: Record<string, any[]> = {};
+  const localIncidentParts: Record<string, any[]> = {};
+  const localMeterReadings: Record<string, any[]> = {};
+  const localIncidentLabor: Record<string, any[]> = {};
+  const localPMSchedules: any[] = [];
+  const localIncidentMedia: Record<string, any[]> = {};
 
   io.on("connection", (socket) => {
     socket.on("join-room", ({ roomId, user }) => {
@@ -400,9 +407,277 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.get("/api/system/status", authenticate, (req, res) => {
-    res.json({ status: "Operacional", modules: ["Incidentes", "Ativos", "Manutenção"] });
+  // ─── Inventory Management ───────────────────────────────────────────────
+  app.get("/api/inventory", authenticate, async (req, res) => {
+    const { data, error } = await supabase.from('inventory').select('*').order('name', { ascending: true });
+    if (error) {
+      return res.json(localInventory);
+    }
+    res.json(data || []);
   });
+
+  app.post("/api/inventory", authenticate, async (req, res) => {
+    const { name, sku, category, unit_cost, quantity_on_hand, min_quantity, image_url } = req.body;
+    const payload = { name, sku, category, unit_cost: parseFloat(unit_cost) || 0, quantity_on_hand: parseInt(quantity_on_hand) || 0, min_quantity: parseInt(min_quantity) || 0, image_url };
+    const { data, error } = await supabase.from('inventory').insert([payload]).select('*').single();
+    if (error) {
+      const localRecord = { id: crypto.randomUUID(), ...payload, created_at: new Date().toISOString() };
+      localInventory.push(localRecord);
+      return res.json(localRecord);
+    }
+    res.json(data);
+  });
+
+  app.patch("/api/inventory/:id/stock", authenticate, async (req, res) => {
+    const { quantity_change, type } = req.body; // type: 'add' or 'remove'
+    const { id } = req.params;
+    
+    // First get current stock
+    let currentQuantity = 0;
+    const { data: item, error: fetchError } = await supabase.from('inventory').select('quantity_on_hand').eq('id', id).single();
+    
+    if (fetchError) {
+      const localItem = localInventory.find(i => i.id === id);
+      if (localItem) {
+        currentQuantity = localItem.quantity_on_hand;
+        const newQuantity = type === 'add' ? currentQuantity + quantity_change : currentQuantity - quantity_change;
+        localItem.quantity_on_hand = Math.max(0, newQuantity);
+        return res.json(localItem);
+      }
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    currentQuantity = item.quantity_on_hand;
+    const newQuantity = type === 'add' ? currentQuantity + quantity_change : currentQuantity - quantity_change;
+    const { data: updated, error: updateError } = await supabase.from('inventory').update({ quantity_on_hand: Math.max(0, newQuantity) }).eq('id', id).select('*').single();
+    
+    if (updateError) return res.status(500).json({ error: updateError.message });
+    res.json(updated);
+  });
+
+  app.patch("/api/incidents/batch", authenticate, async (req, res) => {
+    const { ids, updates } = req.body; // ids: string[], updates: { estado?, severidade? }
+    if (!ids || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No IDs provided" });
+
+    const { data, error } = await supabase.from('incidents').update(updates).in('id', ids).select('*');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // ─── Incident Checklists & Parts ────────────────────────────────────────
+  app.get("/api/incidents/:id/checklists", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { data, error } = await supabase.from('incident_checklists').select('*').eq('incident_id', id);
+    if (error) return res.json(localIncidentChecklists[id] || []);
+    res.json(data || []);
+  });
+
+  app.post("/api/incidents/:id/checklists", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { task_description } = req.body;
+    const payload = { incident_id: id, task_description, is_completed: false };
+    const { data, error } = await supabase.from('incident_checklists').insert([payload]).select('*').single();
+    if (error) {
+      if (!localIncidentChecklists[id]) localIncidentChecklists[id] = [];
+      const localRecord = { id: crypto.randomUUID(), ...payload };
+      localIncidentChecklists[id].push(localRecord);
+      return res.json(localRecord);
+    }
+    res.json(data);
+  });
+
+  app.patch("/api/incidents/:id/checklists/:checklistId", authenticate, async (req, res) => {
+    const { is_completed } = req.body;
+    const { id, checklistId } = req.params;
+    const { data, error } = await supabase.from('incident_checklists').update({ is_completed }).eq('id', checklistId).select('*').single();
+    if (error) {
+      const list = localIncidentChecklists[id] || [];
+      const item = list.find(i => i.id === checklistId);
+      if (item) item.is_completed = is_completed;
+      return res.json(item);
+    }
+    res.json(data);
+  });
+
+  app.get("/api/incidents/:id/parts", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { data, error } = await supabase.from('incident_parts').select('*, inventory(name, unit_cost, sku)').eq('incident_id', id);
+    if (error) return res.json(localIncidentParts[id] || []);
+    res.json(data || []);
+  });
+
+  app.post("/api/incidents/:id/parts", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { part_id, quantity_used } = req.body;
+    const payload = { incident_id: id, part_id, quantity_used: parseInt(quantity_used) || 1 };
+    
+    // Decrease inventory stock
+    const { data: part, error: partError } = await supabase.from('inventory').select('quantity_on_hand').eq('id', part_id).single();
+    let currentStock = 0;
+    if (partError) {
+      const p = localInventory.find(i => i.id === part_id);
+      if (p) {
+        p.quantity_on_hand -= payload.quantity_used;
+      }
+    } else {
+      await supabase.from('inventory').update({ quantity_on_hand: part.quantity_on_hand - payload.quantity_used }).eq('id', part_id);
+    }
+
+    const { data, error } = await supabase.from('incident_parts').insert([payload]).select('*, inventory(name, unit_cost, sku)').single();
+    if (error) {
+      if (!localIncidentParts[id]) localIncidentParts[id] = [];
+      const inventoryItem = localInventory.find(i => i.id === part_id) || { name: 'Peça Desconhecida', unit_cost: 0, sku: 'N/A' };
+      const localRecord = { id: crypto.randomUUID(), ...payload, inventory: inventoryItem };
+      localIncidentParts[id].push(localRecord);
+      return res.json(localRecord);
+    }
+    res.json(data);
+  });
+
+  // ─── Asset Meter Readings ───────────────────────────────────────────────
+  app.get("/api/assets/:id/meter-readings", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { data, error } = await supabase.from('meter_readings').select('*').eq('asset_id', id).order('recorded_at', { ascending: false });
+    if (error) return res.json(localMeterReadings[id] || []);
+    res.json(data || []);
+  });
+
+  app.post("/api/assets/:id/meter-readings", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { reading_value, unit } = req.body;
+    const userId = (req as any).user.id;
+    const value = parseFloat(reading_value) || 0;
+    const payload = { asset_id: id, reading_value: value, unit, user_id: userId, recorded_at: new Date().toISOString() };
+    
+    // Check for PM triggers based on meter reading
+    const pmTrigger = localPMSchedules.find(s => s.asset_id === id && s.threshold_value && value >= s.threshold_value);
+    if (pmTrigger) {
+      const incidentPayload = {
+        categoria: pmTrigger.categoria || 'Manutenção Corretiva',
+        descricao: `[AUTOMÁTICO - TRIGGER] ${pmTrigger.task_description}. Leitura atingiu ${value} ${unit}.`,
+        severidade: 'Alto',
+        estado: 'Aberto',
+        asset_id: id,
+        property_id: '1', // Default property
+        created_at: new Date().toISOString()
+      };
+      await supabase.from('incidents').insert([incidentPayload]);
+    }
+
+    const { data, error } = await supabase.from('meter_readings').insert([payload]).select('*').single();
+    if (error) {
+      if (!localMeterReadings[id]) localMeterReadings[id] = [];
+      const localRecord = { id: crypto.randomUUID(), ...payload };
+      localMeterReadings[id].push(localRecord);
+      return res.json(localRecord);
+    }
+    res.json(data);
+  });
+
+  // --- Labor Tracking Timer ---
+  app.get("/api/incidents/:id/labor", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { data, error } = await supabase.from('incident_labor').select('*').eq('incident_id', id);
+    if (error) return res.json(localIncidentLabor[id] || []);
+    res.json(data || []);
+  });
+
+  app.post("/api/incidents/:id/timer/start", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const userId = (req as any).user.id;
+    const payload = { incident_id: id, user_id: userId, start_time: new Date().toISOString() };
+    
+    const { data, error } = await supabase.from('incident_labor').insert([payload]).select('*').single();
+    if (error) {
+      if (!localIncidentLabor[id]) localIncidentLabor[id] = [];
+      const localRecord = { id: crypto.randomUUID(), ...payload };
+      localIncidentLabor[id].push(localRecord);
+      return res.json(localRecord);
+    }
+    res.json(data);
+  });
+
+  app.post("/api/incidents/:id/timer/stop", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { laborId } = req.body;
+    const stopTime = new Date().toISOString();
+    
+    const { data, error } = await supabase.from('incident_labor').update({ end_time: stopTime }).eq('id', laborId).select('*').single();
+    if (error) {
+      const entry = (localIncidentLabor[id] || []).find((l: any) => l.id === laborId);
+      if (entry) {
+        entry.end_time = stopTime;
+        return res.json(entry);
+      }
+    }
+    res.json(data);
+  });
+
+  // --- Incident Media (Photos) ---
+  app.get("/api/incidents/:id/media", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { data, error } = await supabase.from('incident_media').select('*').eq('incident_id', id);
+    if (error) return res.json(localIncidentMedia[id] || []);
+    res.json(data || []);
+  });
+
+  app.post("/api/incidents/:id/media", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { image_url, type } = req.body;
+    const payload = { incident_id: id, image_url, type: type || 'outro', uploaded_at: new Date().toISOString() };
+    
+    const { data, error } = await supabase.from('incident_media').insert([payload]).select('*').single();
+    if (error) {
+      if (!localIncidentMedia[id]) localIncidentMedia[id] = [];
+      const localRecord = { id: crypto.randomUUID(), ...payload };
+      localIncidentMedia[id].push(localRecord);
+      return res.json(localRecord);
+    }
+    res.json(data);
+  });
+
+  app.get("/api/system/status", authenticate, (req, res) => {
+    res.json({ status: "Operacional", modules: ["Incidentes", "Ativos", "Manutenção", "Inventário", "Automação PM"] });
+  });
+
+  // --- PM Schedules Setup ---
+  app.get("/api/pm/schedules", authenticate, async (req, res) => {
+    const { data, error } = await supabase.from('pm_schedules').select('*');
+    if (error) return res.json(localPMSchedules);
+    res.json(data);
+  });
+
+  app.post("/api/pm/schedules", authenticate, async (req, res) => {
+    const payload = req.body;
+    const { data, error } = await supabase.from('pm_schedules').insert([payload]).select('*').single();
+    if (error) {
+      const local = { id: crypto.randomUUID(), ...payload };
+      localPMSchedules.push(local);
+      return res.json(local);
+    }
+    res.json(data);
+  });
+
+  // Periodic check for Time-based PM (Simulation)
+  setInterval(async () => {
+    const now = new Date();
+    // In a real app, we would query the DB for schedules due today
+    localPMSchedules.forEach(async (pm) => {
+      if (pm.frequency_days && (!pm.last_generated || (now.getTime() - new Date(pm.last_generated).getTime()) > pm.frequency_days * 86400000)) {
+        const incidentPayload = {
+          categoria: 'Preventiva',
+          descricao: `[PREVENTIVA AGENDADA] ${pm.task_description}`,
+          severidade: 'Médio',
+          estado: 'Aberto',
+          asset_id: pm.asset_id,
+          property_id: '1',
+          created_at: now.toISOString()
+        };
+        await supabase.from('incidents').insert([incidentPayload]);
+        pm.last_generated = now.toISOString();
+      }
+    });
+  }, 3600000); // Check every hour
 
   // Seed Admin if not exists - this only works if we bypass or use dummy signup
   // Nota: O administrador local (admin@nexo.com) não necessita de entrada no Supabase.

@@ -33,3 +33,12 @@ export const ASSET_CATEGORIES = [
   'Segurança',
   'Águas e Esgotos'
 ];
+
+export const INVENTORY_CATEGORIES = [
+  'Ferramentas',
+  'Peças de Substituição',
+  'Consumíveis',
+  'Equipamento de Proteção (EPI)',
+  'Lubrificantes',
+  'Outros'
+];

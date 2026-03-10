@@ -5,7 +5,17 @@ import { ASSET_CATEGORIES } from '../constants';
 import DigitalTwin from './DigitalTwin';
 import { canCreateAssets } from '../utils/permissions';
 
-export default function Assets({ propertyId, onClearFilter }: { propertyId?: string | null, onClearFilter?: () => void }) {
+export default function Assets({ 
+  propertyId, 
+  onClearFilter, 
+  initialAsset, 
+  onClearAsset 
+}: { 
+  propertyId?: string | null, 
+  onClearFilter?: () => void,
+  initialAsset?: any,
+  onClearAsset?: () => void
+}) {
   const [assets, setAssets] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,6 +43,17 @@ export default function Assets({ propertyId, onClearFilter }: { propertyId?: str
       setFormData(prev => ({ ...prev, property_id: propertyId.toString() }));
     }
   }, [propertyId]);
+
+  useEffect(() => {
+    if (initialAsset) {
+      setSelectedAsset(initialAsset);
+    }
+  }, [initialAsset]);
+
+  const handleBack = () => {
+    setSelectedAsset(null);
+    if (onClearAsset) onClearAsset();
+  };
 
   const filteredAssets = propertyId
     ? assets.filter(a => a.property_id === propertyId)
@@ -84,7 +105,7 @@ export default function Assets({ propertyId, onClearFilter }: { propertyId?: str
   };
 
   if (selectedAsset) {
-    return <DigitalTwin asset={selectedAsset} onBack={() => setSelectedAsset(null)} />;
+    return <DigitalTwin asset={selectedAsset} onBack={handleBack} />;
   }
 
   return (

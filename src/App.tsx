@@ -18,7 +18,9 @@ import {
   Settings,
   Sun,
   Moon,
-  FileText
+  FileText,
+  Package,
+  Scan
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import socket, { connectSocket, disconnectSocket } from './services/socketService';
@@ -34,6 +36,11 @@ import IncidentDetail from './components/IncidentDetail';
 import Users from './components/Users';
 import Maintenance from './components/Maintenance';
 import Reports from './components/Reports';
+import Inventory from './components/Inventory';
+import AssetScanner from './components/AssetScanner';
+import Automation from './components/Automation';
+import Analytics from './components/Analytics';
+import { requestNotificationPermission, showPushNotification } from './utils/notifications';
 
 import { canManageUsers, canViewReports } from './utils/permissions';
 
@@ -43,6 +50,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [propertyFilter, setPropertyFilter] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -54,6 +62,7 @@ export default function App() {
       setTheme(savedTheme);
       document.documentElement.classList.toggle('light', savedTheme === 'light');
     }
+    requestNotificationPermission();
   }, []);
 
   useEffect(() => {
@@ -71,6 +80,7 @@ export default function App() {
     socket.on('notification', (notif) => {
       if (user && notif.userId === user.id) {
         setNotifications(prev => [notif, ...prev]);
+        showPushNotification('Nexo SGFM', notif.mensagem);
       }
     });
     return () => {
@@ -127,6 +137,10 @@ export default function App() {
     { id: 'incidents', label: 'Incidentes', icon: AlertCircle },
     { id: 'assets', label: 'Ativos & Inspecções', icon: Cpu },
     { id: 'maintenance', label: 'Manutenção', icon: Wrench },
+    { id: 'inventory', label: 'Inventário', icon: Package },
+    { id: 'automation', label: 'Automação', icon: Activity },
+    { id: 'analytics', label: 'Indicadores', icon: ShieldCheck },
+    { id: 'scanner', label: 'Scanner QR', icon: Scan },
     { id: 'planning', label: 'Roteiro Estratégico', icon: Calendar },
     { id: 'reports', label: 'Relatórios', icon: FileText, permission: canViewReports },
     { id: 'users', label: 'Utilizadores', icon: UsersIcon, permission: canManageUsers },
@@ -319,11 +333,15 @@ export default function App() {
                 activeTab === 'dashboard' ? <Dashboard onSelectIncident={setSelectedIncidentId} /> :
                   activeTab === 'properties' ? <Properties onSelectProperty={(id) => { setPropertyFilter(id); setActiveTab('assets'); }} /> :
                     activeTab === 'incidents' ? <Incidents onSelectIncident={setSelectedIncidentId} /> :
-                      activeTab === 'assets' ? <Assets propertyId={propertyFilter} onClearFilter={() => setPropertyFilter(null)} /> :
+                      activeTab === 'assets' ? <Assets propertyId={propertyFilter} onClearFilter={() => setPropertyFilter(null)} initialAsset={selectedAsset} onClearAsset={() => setSelectedAsset(null)} /> :
                         activeTab === 'maintenance' ? <Maintenance /> :
-                          activeTab === 'planning' ? <Planning5Y /> :
-                            activeTab === 'reports' ? <Reports /> :
-                              activeTab === 'users' ? <Users /> : <Dashboard onSelectIncident={setSelectedIncidentId} />
+                          activeTab === 'inventory' ? <Inventory /> :
+                            activeTab === 'automation' ? <Automation /> :
+                              activeTab === 'analytics' ? <Analytics /> :
+                                activeTab === 'scanner' ? <AssetScanner onSelectAsset={(a) => { setSelectedAsset(a); setActiveTab('assets'); }} /> :
+                                  activeTab === 'planning' ? <Planning5Y /> :
+                                    activeTab === 'reports' ? <Reports /> :
+                                      activeTab === 'users' ? <Users /> : <Dashboard onSelectIncident={setSelectedIncidentId} />
               )}
             </motion.div>
           </AnimatePresence>

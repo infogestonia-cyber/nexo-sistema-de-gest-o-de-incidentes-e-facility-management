@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { QRCodeSVG } from 'qrcode.react';
 
 const CONDITION_OPTIONS = ['Excelente', 'Bom', 'Razoável', 'Degradado', 'Crítico'];
 const ANOMALY_TYPES = ['Visual', 'Funcional', 'Ruído', 'Vibração', 'Vazamento', 'Corrosão', 'Outra'];
@@ -20,6 +21,9 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
   const [isNewInspection, setIsNewInspection] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [meterReadings, setMeterReadings] = useState<any[]>([]);
+  const [newReading, setNewReading] = useState({ value: '', unit: 'Horas' });
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
@@ -49,23 +53,24 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
       try {
         const token = localStorage.getItem('token');
         const headers = { Authorization: `Bearer ${token}` };
-        const [inspRes, maintRes, usersRes] = await Promise.all([
+        const [inspRes, maintRes, usersRes, meterRes] = await Promise.all([
           fetch(`/api/asset-inspections?asset_id=${asset.id}`, { headers }),
           fetch('/api/maintenance-plans', { headers }),
           fetch('/api/users', { headers }),
+          fetch(`/api/assets/${asset.id}/meter-readings`, { headers }),
         ]);
-        const [inspData, maintData, usersData] = await Promise.all([
+        const [inspData, maintData, usersData, meterData] = await Promise.all([
           inspRes.ok ? inspRes.json() : [],
           maintRes.ok ? maintRes.json() : [],
           usersRes.ok ? usersRes.json() : [],
+          meterRes.ok ? meterRes.json() : [],
         ]);
         setInspections(Array.isArray(inspData) ? inspData : []);
         setMaintenanceData(Array.isArray(maintData) ? maintData.filter((m: any) => m.asset_id === asset.id) : []);
         setUsers(Array.isArray(usersData) ? usersData : []);
+        setMeterReadings(Array.isArray(meterData) ? meterData : []);
       } catch (e) {
-        console.error('Erro ao carregar inspecções:', e);
-        setInspections([]);
-        setMaintenanceData([]);
+        console.error('Erro ao carregar dados:', e);
       } finally {
         setLoading(false);
       }
@@ -127,6 +132,30 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
       }
     } catch (err) {
       showToast('❌ Erro de rede ao submeter inspecção.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleMeterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReading.value) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/assets/${asset.id}/meter-readings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ reading_value: newReading.value, unit: newReading.unit }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMeterReadings(p => [data, ...p]);
+        setNewReading({ ...newReading, value: '' });
+        showToast('✅ Leitura registada!');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -197,18 +226,121 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
+          <button 
+            onClick={() => setIsQRModalOpen(true)}
+            className="p-3 bg-white/5 border border-brand-border rounded-xl text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2 group"
+          >
+            <span className="text-[9px] font-bold uppercase tracking-widest hidden group-hover:block transition-all">Etiqueta QR</span>
+            <Save size={16} />
+          </button>
           {lastInspection && (
             <span className={`px-2 py-1 text-[9px] font-bold uppercase tracking-widest border ${conditionColor(lastInspection.condicao_geral)}`}>
               {lastInspection.condicao_geral}
             </span>
           )}
-          {nextMaintenance && (
-            <span className="text-[9px] text-gray-500 font-mono">
-              Próx. Manutenção: {nextMaintenance.proxima_data}
-            </span>
-          )}
         </div>
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 space-y-5">
+          {/* Summary Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Inspecções', value: inspections.length, color: 'text-emerald-500' },
+              { label: 'Última Condição', value: lastInspection?.condicao_geral || '—', color: lastInspection ? conditionColor(lastInspection.condicao_geral).split(' ')[0] : 'text-gray-500' },
+              { label: 'Horas / Ciclos', value: meterReadings[0]?.reading_value || '0', color: 'text-amber-500' },
+              { label: 'Manutenções', value: maintenanceData.length, color: 'text-blue-500' },
+            ].map((s, i) => (
+              <div key={i} className="bg-brand-surface border border-brand-border p-4">
+                <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{s.label}</p>
+                <p className={`text-sm font-bold mt-1 ${s.color}`}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Inspections List */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Histórico de Inspecções</h3>
+            </div>
+            {/* ... rest of inspections list logic ... */}
+          </div>
+        </div>
+
+        {/* Right Column: Meter Readings */}
+        <div className="space-y-5">
+          <div className="bg-brand-surface border border-brand-border flex flex-col h-full">
+            <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
+              <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                <Activity size={14} className="text-amber-500" />
+                Medição de Uso
+              </h3>
+            </div>
+            <div className="p-4 flex-1 space-y-4">
+              <form onSubmit={handleMeterSubmit} className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Leitura"
+                    value={newReading.value}
+                    onChange={e => setNewReading({ ...newReading, value: e.target.value })}
+                    className="flex-1 px-3 py-2 bg-white/5 border border-brand-border rounded-xl text-[10px] text-white focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                  />
+                  <select
+                    value={newReading.unit}
+                    onChange={e => setNewReading({ ...newReading, unit: e.target.value })}
+                    className="w-24 px-3 py-2 bg-white/5 border border-brand-border rounded-xl text-[10px] text-white focus:outline-none"
+                  >
+                    <option value="Horas">Horas</option>
+                    <option value="Ciclos">Ciclos</option>
+                    <option value="Km">Km</option>
+                    <option value="Uni">Uni</option>
+                  </select>
+                </div>
+                <button type="submit" disabled={submitting} className="w-full py-2 bg-amber-500 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20">
+                  Registar Leitura
+                </button>
+              </form>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                {meterReadings.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                    <div>
+                      <p className="text-xs font-bold text-white">{r.reading_value} {r.unit}</p>
+                      <p className="text-[8px] text-gray-500 uppercase tracking-widest">{format(new Date(r.recorded_at), 'dd MMM yyyy', { locale: ptBR })}</p>
+                    </div>
+                    {/* Comparison trend would go here */}
+                  </div>
+                ))}
+                {meterReadings.length === 0 && <p className="text-[9px] text-gray-600 text-center py-8 italic uppercase tracking-widest">Sem leituras</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* QR Modal */}
+      <AnimatePresence>
+        {isQRModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsQRModalOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white p-8 rounded-none shadow-2xl relative z-10 text-center">
+              <h3 className="text-black font-bold uppercase tracking-widest text-[10px] mb-6">Etiqueta de Ativo - Nexo SGFM</h3>
+              <div className="bg-white p-4 inline-block border-2 border-black">
+                <QRCodeSVG value={JSON.stringify({ id: asset.id, name: asset.nome })} size={180} />
+              </div>
+              <p className="text-black font-bold text-sm mt-4 tracking-tight">{asset.nome}</p>
+              <p className="text-gray-500 font-mono text-[9px] mt-1">ID: #{asset.id?.toString().padStart(6, '0')}</p>
+              <button 
+                onClick={() => window.print()}
+                className="mt-8 w-full py-3 bg-black text-white font-bold uppercase tracking-widest text-[10px] hover:bg-gray-800 transition-all"
+              >
+                Imprimir Etiqueta
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
