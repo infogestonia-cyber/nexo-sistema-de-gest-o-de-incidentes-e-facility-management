@@ -5,6 +5,8 @@ import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CATEGORIES, SEVERITIES } from '../constants';
 import { canReportIncidents } from '../utils/permissions';
+import { Toast, ToastType } from './ui/Toast';
+import socket from '../services/socketService';
 
 // Safe date formatter - never crashes on invalid dates
 const safeFormat = (dateStr: string | null | undefined, fmt: string) => {
@@ -25,12 +27,19 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
   const [filterStatus, setFilterStatus] = useState('');
   const [quickFilter, setQuickFilter] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    try {
+      const u = localStorage.getItem('user');
+      return u && u !== 'undefined' ? JSON.parse(u) : {};
+    } catch { return {}; }
+  });
+  const [incidentCategories, setIncidentCategories] = useState<string[]>(CATEGORIES);
+
   const [formData, setFormData] = useState({
     property_id: '',
     asset_id: '',
@@ -40,9 +49,8 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
     responsavel_id: ''
   });
 
-  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+  const showToast = (msg: string, type: ToastType = 'success') => {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -51,19 +59,30 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
     try {
       const token = localStorage.getItem('token');
       const h = { Authorization: `Bearer ${token}` };
-      const [incRes, propRes, assetRes, userRes] = await Promise.all([
+      const [incRes, propRes, assetRes, userRes, settingsRes] = await Promise.all([
         fetch('/api/incidents', { headers: h }),
         fetch('/api/properties', { headers: h }),
         fetch('/api/assets', { headers: h }),
-        fetch('/api/users', { headers: h })
+        fetch('/api/users', { headers: h }),
+        fetch('/api/settings', { headers: h })
       ]);
-      const [incData, propData, assetData, userData] = await Promise.all([
-        incRes.json(), propRes.json(), assetRes.json(), userRes.json()
-      ]);
+
+      const incData = incRes.ok ? await incRes.json() : [];
+      const propData = propRes.ok ? await propRes.json() : [];
+      const assetData = assetRes.ok ? await assetRes.json() : [];
+      const userData = userRes.ok ? await userRes.json() : [];
+      const settingsData = settingsRes.ok ? await settingsRes.json() : [];
+
       setIncidents(Array.isArray(incData) ? incData : []);
       setProperties(Array.isArray(propData) ? propData : []);
       setAssets(Array.isArray(assetData) ? assetData : []);
       setUsers(Array.isArray(userData) ? userData : []);
+
+      const incidentSetting = Array.isArray(settingsData) ? settingsData.find((s: any) => s.setting_key === 'incident_categories') : null;
+      if (incidentSetting && Array.isArray(incidentSetting.setting_value) && incidentSetting.setting_value.length > 0) {
+        setIncidentCategories(incidentSetting.setting_value);
+        setFormData(prev => ({ ...prev, categoria: incidentSetting.setting_value[0] }));
+      }
     } catch (err) {
       showToast('Erro ao carregar incidentes.', 'error');
       setIncidents([]);
@@ -71,6 +90,15 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    socket.on("incident-update", () => {
+      fetchData();
+    });
+    return () => {
+      socket.off("incident-update");
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,8 +123,8 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
-        setFormData({ property_id: '', asset_id: '', categoria: CATEGORIES[0], descricao: '', severidade: 'Médio', responsavel_id: '' });
-        showToast('✅ Incidente reportado com sucesso!');
+        setFormData({ property_id: '', asset_id: '', categoria: incidentCategories[0] || CATEGORIES[0], descricao: '', severidade: 'Médio', responsavel_id: '' });
+        showToast('Incidente reportado com sucesso!', 'success');
       } else {
         const err = await res.json();
         showToast(err.error || 'Erro ao reportar incidente', 'error');
@@ -121,7 +149,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
         body: JSON.stringify({ ids: selectedIds, updates })
       });
       if (res.ok) {
-        showToast(`✅ ${selectedIds.length} incidentes atualizados.`);
+        showToast(`${selectedIds.length} incidentes atualizados.`, 'success');
         setSelectedIds([]);
         fetchData();
       }
@@ -147,7 +175,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
 
   const handleExport = () => {
     if (filtered.length === 0) return;
-    
+
     const headers = ['Protocolo', 'Categoria', 'Descricao', 'Propriedade', 'Severidade', 'Estado', 'Responsavel', 'Data'];
     const rows = filtered.map(i => [
       `#${i.id?.toString().slice(-4).toUpperCase()}`,
@@ -230,9 +258,9 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       || i.property_name?.toLowerCase().includes(search.toLowerCase())
       || i.descricao?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = !filterStatus || i.estado === filterStatus;
-    
+
     if (quickFilter === 'high') return matchSearch && matchStatus && i.severidade === 'Crítico';
-    if (quickFilter === 'mine') return matchSearch && matchStatus && i.responsavel_id === currentUser.id;
+    if (quickFilter === 'mine') return matchSearch && matchStatus && i.responsavel_id === (currentUser?.id || '');
     if (quickFilter === 'overdue') {
       const isOverdue = new Date(i.sla_resposta_limite) < new Date() && i.estado === 'Aberto';
       return matchSearch && matchStatus && isOverdue;
@@ -243,22 +271,19 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div>
       <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar Incidentes...</p>
     </div>
   );
 
   return (
     <div className="space-y-5 page-enter">
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-            className={`fixed top-4 right-4 z-[200] px-5 py-3 text-sm font-bold text-white shadow-2xl border ${toast.type === 'error' ? 'bg-red-900 border-red-500/30' : 'bg-brand-surface border-brand-border'}`}>
-            {toast.msg}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Modern Premium Toast */}
+      <Toast
+        message={toast?.msg || null}
+        type={toast?.type}
+        onClose={() => setToast(null)}
+      />
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -319,9 +344,9 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
 
       <AnimatePresence>
         {selectedIds.length > 0 && (
-          <motion.div 
-            initial={{ y: 50, opacity: 0 }} 
-            animate={{ y: 0, opacity: 1 }} 
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
             exit={{ y: 50, opacity: 0 }}
             className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[150] bg-brand-surface border border-emerald-500/30 px-6 py-3 shadow-2xl flex items-center gap-6"
           >
@@ -329,7 +354,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
               <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">{selectedIds.length} Selecionados</span>
               <button onClick={() => setSelectedIds([])} className="text-gray-500 hover:text-white transition-colors"><XIcon size={14} /></button>
             </div>
-            
+
             <div className="flex items-center gap-4">
               <div className="group relative">
                 <button className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-white transition-all">
@@ -360,92 +385,92 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       {viewMode === 'calendar' ? <CalendarView /> : (
         <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
           <table className="w-full text-left">
-          <thead>
-            <tr className="bg-white/[0.02]">
-              <th className="px-4 py-3 w-10">
-                <input 
-                  type="checkbox" 
-                  checked={selectedIds.length === filtered.length && filtered.length > 0} 
-                  onChange={toggleSelectAll}
-                  className="accent-emerald-500" 
-                />
-              </th>
-              <th className="col-header">Protocolo</th>
-              <th className="col-header">Localização</th>
-              <th className="col-header">Severidade</th>
-              <th className="col-header">Estado</th>
-              <th className="col-header">Responsável</th>
-              <th className="col-header">Data</th>
-              <th className="col-header">Ver</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-brand-border">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-12 text-center">
-                  <AlertCircle size={32} className="text-gray-600 mx-auto mb-3" />
-                  <p className="text-sm font-bold text-gray-500">
-                    {search || filterStatus ? 'Nenhum incidente encontrado' : 'Nenhum incidente registado'}
-                  </p>
-                  {!search && !filterStatus && canReportIncidents(currentUser.perfil) && (
-                    <button onClick={() => setIsModalOpen(true)}
-                      className="mt-3 px-4 py-2 bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-all">
-                      + Reportar primeiro incidente
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ) : filtered.map((incident) => (
-              <tr key={incident.id} className={`data-row cursor-pointer transition-all ${selectedIds.includes(incident.id) ? 'bg-emerald-500/5' : ''}`} onClick={() => onSelectIncident(incident.id)}>
-                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedIds.includes(incident.id)} 
-                    onChange={e => setSelectedIds(prev => prev.includes(incident.id) ? prev.filter(x => x !== incident.id) : [...prev, incident.id])}
-                    className="accent-emerald-500" 
+            <thead>
+              <tr className="bg-white/[0.02]">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.length === filtered.length && filtered.length > 0}
+                    onChange={toggleSelectAll}
+                    className="accent-emerald-500"
                   />
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-white/5 flex items-center justify-center text-[9px] font-mono font-bold text-emerald-500 border border-white/5 shrink-0">
-                      #{incident.id?.toString().slice(-4).toUpperCase() || '0000'}
-                    </div>
-                    <div>
-                      <p className="font-bold text-white text-xs">{incident.categoria}</p>
-                      <p className="text-[9px] text-gray-600 truncate max-w-[120px]">{incident.descricao}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <p className="text-xs text-gray-300 truncate max-w-[140px]">{incident.property_name || '—'}</p>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${severityConfig[incident.severidade] || severityConfig['Baixo']}`}>
-                    {incident.severidade}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full ${statusDot[incident.estado] || 'bg-gray-500'}`}></div>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{incident.estado}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-xs text-gray-400">{incident.responsavel_nome || 'Não Atribuído'}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-[10px] font-mono text-gray-500">{safeFormat(incident.created_at, 'dd/MM HH:mm')}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <button className="p-1.5 hover:bg-white/5 text-gray-500 hover:text-emerald-400 transition-colors">
-                    <ArrowUpRight size={14} />
-                  </button>
-                </td>
+                </th>
+                <th className="col-header">Protocolo</th>
+                <th className="col-header">Localização</th>
+                <th className="col-header">Severidade</th>
+                <th className="col-header">Estado</th>
+                <th className="col-header">Responsável</th>
+                <th className="col-header">Data</th>
+                <th className="col-header">Ver</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-brand-border">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center">
+                    <AlertCircle size={32} className="text-gray-600 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-gray-500">
+                      {search || filterStatus ? 'Nenhum incidente encontrado' : 'Nenhum incidente registado'}
+                    </p>
+                    {!search && !filterStatus && canReportIncidents(currentUser.perfil) && (
+                      <button onClick={() => setIsModalOpen(true)}
+                        className="mt-3 px-4 py-2 bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-all">
+                        + Reportar primeiro incidente
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ) : filtered.map((incident) => (
+                <tr key={incident.id} className={`data-row cursor-pointer transition-all ${selectedIds.includes(incident.id) ? 'bg-emerald-500/5' : ''}`} onClick={() => onSelectIncident(incident.id)}>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(incident.id)}
+                      onChange={e => setSelectedIds(prev => prev.includes(incident.id) ? prev.filter(x => x !== incident.id) : [...prev, incident.id])}
+                      className="accent-emerald-500"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-white/5 flex items-center justify-center text-[9px] font-mono font-bold text-emerald-500 border border-white/5 shrink-0">
+                        #{incident.id?.toString().slice(-4).toUpperCase() || '0000'}
+                      </div>
+                      <div>
+                        <p className="font-bold text-white text-xs">{incident.categoria}</p>
+                        <p className="text-[9px] text-gray-600 truncate max-w-[120px]">{incident.descricao}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-xs text-gray-300 truncate max-w-[140px]">{incident.property_name || '—'}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${severityConfig[incident.severidade] || severityConfig['Baixo']}`}>
+                      {incident.severidade}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-none ${statusDot[incident.estado] || 'bg-gray-500'}`}></div>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{incident.estado}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs text-gray-400">{incident.responsavel_nome || 'Não Atribuído'}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-[10px] font-mono text-gray-500">{safeFormat(incident.created_at, 'dd/MM HH:mm')}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button className="p-1.5 hover:bg-white/5 text-gray-500 hover:text-emerald-400 transition-colors">
+                      <ArrowUpRight size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* ─── Report Incident Modal ─── */}
@@ -498,7 +523,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Categoria</label>
                       <select value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value })}
                         className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white">
-                        {CATEGORIES.map(c => <option key={c} value={c} className="bg-brand-surface">{c}</option>)}
+                        {incidentCategories.map(c => <option key={c} value={c} className="bg-brand-surface">{c}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1.5">
@@ -542,7 +567,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                     </button>
                     <button type="submit" disabled={submitting}
                       className="flex-1 py-3 bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2">
-                      {submitting ? <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" /> A processar...</> : 'Submeter Protocolo'}
+                      {submitting ? <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin" /> A processar...</> : 'Submeter Protocolo'}
                     </button>
                   </div>
                 </form>
@@ -554,3 +579,4 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
     </div>
   );
 }
+

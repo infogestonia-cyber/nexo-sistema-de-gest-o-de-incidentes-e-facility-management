@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ensureArray } from '../utils/safeArray';
 import {
   ArrowLeft,
   Clock,
@@ -29,14 +30,28 @@ import { ptBR } from 'date-fns/locale';
 import Markdown from 'react-markdown';
 import socket from '../services/socketService';
 import { jsPDF } from 'jspdf';
-import { canUpdateIncidents } from '../utils/permissions';
+import { canUpdateIncidents, canAssignIncidents } from '../utils/permissions';
+import { api } from '../services/api';
+
+const safeFormat = (dateStr: string | null | undefined, formatStr: string, options?: any) => {
+  if (!dateStr) return '---';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '---';
+    return format(d, formatStr, options);
+  } catch (e) {
+    return '---';
+  }
+};
 
 export default function IncidentDetail({ id, onBack }: { id: string, onBack: () => void }) {
   const [incident, setIncident] = useState<any>(null);
   const [actionDesc, setActionDesc] = useState('');
   const [newStatus, setNewStatus] = useState('');
+  const [assignedTech, setAssignedTech] = useState('');
   const [submittingAction, setSubmittingAction] = useState(false);
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
+  const [techUsers, setTechUsers] = useState<any[]>([]);
   const [checklists, setChecklists] = useState<any[]>([]);
   const [partsUsed, setPartsUsed] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
@@ -46,7 +61,16 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
   const [laborLogs, setLaborLogs] = useState<any[]>([]);
   const [activeTimer, setActiveTimer] = useState<any>(null);
   const [media, setMedia] = useState<any[]>([]);
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [loadingChecklist, setLoadingChecklist] = useState(false);
+  const [loadingPart, setLoadingPart] = useState(false);
+  const [loadingTimer, setLoadingTimer] = useState(false);
+  const [estCost, setEstCost] = useState(0);
+  const [user] = useState<any>(() => {
+    try {
+      const u = localStorage.getItem('user');
+      return u && u !== 'undefined' ? JSON.parse(u) : {};
+    } catch { return {}; }
+  });
 
   useEffect(() => {
     fetchIncident();
@@ -54,90 +78,130 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     fetchPartsUsed();
     fetchInventory();
     fetchLabor();
-    fetchMedia();
+    fetchTechUsers();
+    
+    // fetchMedia moved to rely on incident object loaded first
+    // so we call it after fetchIncident
 
     socket.emit("join-room", {
       roomId: `incident-${id}`,
-      user: JSON.parse(localStorage.getItem('user') || '{}')
+      user: (() => {
+        try {
+          const u = localStorage.getItem('user');
+          return u && u !== 'undefined' ? JSON.parse(u) : {};
+        } catch { return {}; }
+      })()
     });
 
     socket.on("presence-update", (users) => {
       setActiveUsers(users);
     });
 
+    socket.on("incident-update", ({ incidentId }) => {
+      if (incidentId === id) {
+        fetchIncident();
+        fetchChecklists();
+        fetchPartsUsed();
+        fetchLabor();
+        fetchMedia(); // Added refresh for media as well
+      }
+    });
+
     return () => {
       socket.off("presence-update");
+      socket.off("incident-update");
     };
   }, [id]);
 
   const fetchIncident = async () => {
-    const res = await fetch(`/api/incidents/${id}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setIncident(data);
-    setNewStatus(data.estado);
+    try {
+      const data = await api.get(`/api/incidents/${id}`);
+      setIncident(data);
+      if (data?.estado) setNewStatus(data.estado);
+      if (data?.responsavel_id) setAssignedTech(data.responsavel_id);
+      if (data?.custo_estimado) setEstCost(data.custo_estimado);
+      fetchMedia(data); // Prepend main image
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchTechUsers = async () => {
+    try {
+      const data = await api.get('/api/users');
+      setTechUsers(Array.isArray(data) ? data.filter((u: any) => u.perfil === 'Técnico' || u.perfil === 'Gestor' || u.perfil === 'Administrador') : []);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const fetchChecklists = async () => {
-    const res = await fetch(`/api/incidents/${id}/checklists`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setChecklists(data);
+    try {
+      const data = await api.get(`/api/incidents/${id}/checklists`);
+      setChecklists(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setChecklists([]);
+    }
   };
 
   const fetchPartsUsed = async () => {
-    const res = await fetch(`/api/incidents/${id}/parts`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setPartsUsed(data);
+    try {
+      const data = await api.get(`/api/incidents/${id}/parts`);
+      setPartsUsed(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setPartsUsed([]);
+    }
   };
 
   const fetchInventory = async () => {
-    const res = await fetch('/api/inventory', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setInventory(data);
+    try {
+      const data = await api.get('/api/inventory');
+      setInventory(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setInventory([]);
+    }
   };
 
   const fetchLabor = async () => {
-    const res = await fetch(`/api/incidents/${id}/labor`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setLaborLogs(data);
-    const running = data.find((l: any) => !l.end_time);
-    if (running) setActiveTimer(running);
+    try {
+      const data = await api.get(`/api/incidents/${id}/labor`);
+      const logs = Array.isArray(data) ? data : [];
+      setLaborLogs(logs);
+      const running = logs.find((l: any) => !l.end_time);
+      if (running) setActiveTimer(running);
+    } catch (e) {
+      console.error(e);
+      setLaborLogs([]);
+    }
   };
 
   const handleStartTimer = async () => {
-    const res = await fetch(`/api/incidents/${id}/timer/start`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    if (res.ok) {
-      const data = await res.json();
+    setLoadingTimer(true);
+    try {
+      const data = await api.post(`/api/incidents/${id}/timer/start`);
       setActiveTimer(data);
       fetchLabor();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingTimer(false);
     }
   };
 
   const handleStopTimer = async () => {
     if (!activeTimer) return;
-    const res = await fetch(`/api/incidents/${id}/timer/stop`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}` 
-      },
-      body: JSON.stringify({ laborId: activeTimer.id })
-    });
-    if (res.ok) {
+    setLoadingTimer(true);
+    try {
+      await api.post(`/api/incidents/${id}/timer/stop`, { laborId: activeTimer.id });
       setActiveTimer(null);
       fetchLabor();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingTimer(false);
     }
   };
 
@@ -149,14 +213,24 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     return `${Math.floor(diff / 60)}h ${diff % 60}m`;
   };
 
-  const fetchMedia = async () => {
+  const fetchMedia = async (incData: any = incident) => {
     try {
-      const res = await fetch(`/api/incidents/${id}/media`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      const data = await res.json();
-      setMedia(data);
-    } catch (e) { console.error(e); }
+      const data = await api.get(`/api/incidents/${id}/media`);
+      const mediaList = Array.isArray(data) ? data : [];
+      
+      // Inject main incident image as the first media item
+      if (incData?.imagem_url) {
+        mediaList.unshift({
+          id: 'main-img',
+          image_url: incData.imagem_url,
+          type: 'Abertura Pelo Cliente'
+        });
+      }
+      setMedia(mediaList);
+    } catch (e) {
+      console.error(e);
+      setMedia(incData?.imagem_url ? [{ id: 'main-img', image_url: incData.imagem_url, type: 'Abertura Pelo Cliente' }] : []);
+    }
   };
 
   const handleUploadMedia = async (type: 'antes' | 'depois') => {
@@ -169,12 +243,12 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = reader.result as string;
-        const res = await fetch(`/api/incidents/${id}/media`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-          body: JSON.stringify({ image_url: base64, type })
-        });
-        if (res.ok) fetchMedia();
+        try {
+          await api.post(`/api/incidents/${id}/media`, { image_url: base64, type });
+          fetchMedia();
+        } catch (err) {
+          console.error(err);
+        }
       };
       reader.readAsDataURL(file);
     };
@@ -226,11 +300,11 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     partsUsed.forEach((p: any) => {
       const cost = (p.inventory?.unit_cost || 0) * p.quantity_used;
       totalMat += cost;
-      doc.text(`- ${p.inventory?.name}: ${p.quantity_used} un x ${p.inventory?.unit_cost}€ = ${cost}€`, margin + 5, y);
+      doc.text(`- ${p.inventory?.name}: ${p.quantity_used} un x ${p.inventory?.unit_cost} MT = ${cost} MT`, margin + 5, y);
       y += 6;
     });
     doc.setFont('helvetica', 'bold');
-    doc.text(`Total Materiais: ${totalMat}€`, margin, y + 5);
+    doc.text(`Total Materiais: ${totalMat} MT`, margin, y + 5);
     doc.setFont('helvetica', 'normal');
     y += 20;
 
@@ -243,55 +317,75 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
       y += 6;
     });
 
-    doc.save(`Relatorio_Incidente_${incident.id.slice(0,8)}.pdf`);
+    doc.save(`Relatorio_Incidente_${incident.id.slice(0, 8)}.pdf`);
   };
 
   const handleAddChecklist = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChecklistItem.trim()) return;
-    const res = await fetch(`/api/incidents/${id}/checklists`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({ task_description: newChecklistItem })
-    });
-    if (res.ok) {
+    setLoadingChecklist(true);
+    try {
+      await api.post(`/api/incidents/${id}/checklists`, { task_description: newChecklistItem });
       setNewChecklistItem('');
       fetchChecklists();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingChecklist(false);
     }
   };
 
   const toggleChecklist = async (checklistId: string, currentStatus: boolean) => {
-    const res = await fetch(`/api/incidents/${id}/checklists/${checklistId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({ is_completed: !currentStatus })
-    });
-    if (res.ok) {
+    try {
+      await api.patch(`/api/incidents/${id}/checklists/${checklistId}`, { is_completed: !currentStatus });
       fetchChecklists();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteChecklist = async (checklistId: string) => {
+    if (!window.confirm('Eliminar esta tarefa? A acao sera registada no log de auditoria.')) return;
+    setLoadingChecklist(true);
+    try {
+      await api.delete(`/api/incidents/${id}/checklists/${checklistId}`);
+      fetchChecklists();
+      fetchIncident(); // Refresh log
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingChecklist(false);
     }
   };
 
   const handleAddPart = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPartId) return;
-    const res = await fetch(`/api/incidents/${id}/parts`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({ part_id: selectedPartId, quantity_used: partQuantity })
-    });
-    if (res.ok) {
+    setLoadingPart(true);
+    try {
+      await api.post(`/api/incidents/${id}/parts`, { part_id: selectedPartId, quantity_used: partQuantity });
       setSelectedPartId('');
       setPartQuantity(1);
       fetchPartsUsed();
+      fetchIncident(); // Refresh log with auto-entry
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPart(false);
+    }
+  };
+
+  const handleDeletePart = async (partId: string) => {
+    if (!window.confirm('Eliminar este material? O stock sera restaurado e a acao registada no log.')) return;
+    setLoadingPart(true);
+    try {
+      await api.delete(`/api/incidents/${id}/parts/${partId}`);
+      fetchPartsUsed();
+      fetchIncident(); // Refresh log
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPart(false);
     }
   };
 
@@ -299,18 +393,11 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     e.preventDefault();
     setSubmittingAction(true);
     try {
-      const res = await fetch(`/api/incidents/${id}/actions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ descricao_acao: actionDesc, novo_estado: newStatus })
-      });
-      if (res.ok) {
-        setActionDesc('');
-        fetchIncident();
-      }
+      await api.post(`/api/incidents/${id}/actions`, { descricao_acao: actionDesc, novo_estado: newStatus, responsavel_id: assignedTech });
+      setActionDesc('');
+      fetchIncident();
+    } catch (err) {
+      console.error(err);
     } finally {
       setSubmittingAction(false);
     }
@@ -320,9 +407,18 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     // Standard system summary logic could go here
   };
 
+  const handleUpdateEstCost = async (val: number) => {
+    setEstCost(val);
+    try {
+      await api.post(`/api/incidents/${id}/actions`, { descricao_acao: `[Custo Estimado Atualizado] Novo valor: ${val.toLocaleString('pt-MZ')} MT` });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   if (!incident) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div>
       <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar dados do protocolo...</p>
     </div>
   );
@@ -339,24 +435,24 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
           Voltar à Matriz
         </button>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-xl border border-white/5">
+          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-none border border-white/5">
             <Users size={12} className="text-emerald-500" />
             <div className="flex -space-x-1.5">
-              {activeUsers.map((u, i) => (
-                <div key={i} className="w-5 h-5 rounded-full border border-brand-surface bg-emerald-500 flex items-center justify-center text-[7px] font-bold text-white shadow-lg" title={u.user.nome}>
-                  {u.user.nome.charAt(0)}
+              {ensureArray<any>(activeUsers).map((u, i) => (
+                <div key={i} className="w-5 h-5 rounded-none border border-brand-surface bg-emerald-500 flex items-center justify-center text-[7px] font-bold text-white shadow-lg" title={u.user.nome}>
+                  {u.user?.nome?.charAt(0) || '?'}
                 </div>
               ))}
             </div>
           </div>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={handleExportPDF}
-              className="px-4 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all flex items-center gap-2"
+              className="px-4 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-none text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all flex items-center gap-2"
             >
               <FileText size={14} /> Relatório PDF
             </button>
-            <button className="p-2 bg-brand-surface border border-brand-border rounded-xl text-gray-400 hover:text-white transition-colors">
+            <button className="p-2 bg-brand-surface border border-brand-border rounded-none text-gray-400 hover:text-white transition-colors">
               <Download size={16} />
             </button>
           </div>
@@ -369,20 +465,33 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
           <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
             <div className="p-6 bg-white/[0.02] border-b border-brand-border flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
+                <div className="w-10 h-10 rounded-none bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
                   <AlertCircle size={20} />
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-white tracking-tight">Protocolo de {incident.categoria}</h2>
-                  <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-0.5">ID: #{incident.id.toString().padStart(4, '0')}</p>
+                  <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-0.5">ID: #{incident.id ? String(incident.id).slice(0, 8) : '---'}</p>
                 </div>
               </div>
-              <span className={`px-3 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider ${incident.severidade === 'Crítico' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+              <span className={`px-3 py-1 rounded-none text-[10px] font-bold uppercase tracking-wider ${incident.severidade === 'Crítico' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
                 incident.severidade === 'Alto' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' :
                   'bg-blue-500/10 text-blue-500 border border-blue-500/20'
                 }`}>
                 Prioridade {incident.severidade}
               </span>
+            </div>
+
+            <div className="px-6 py-4 bg-white/[0.01] border-b border-brand-border flex justify-between">
+              <div className="flex items-center gap-2">
+                <User size={14} className="text-gray-500" />
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Reportado por:</span>
+                <span className="text-xs font-medium text-white">{incident.criado_por_nome || 'Cliente / Sistema'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={14} className="text-blue-500" />
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Técnico Responsável:</span>
+                <span className="text-xs font-medium text-white">{incident.responsavel_nome || 'Não atribuído'}</span>
+              </div>
             </div>
 
             <div className="p-6 space-y-6">
@@ -397,7 +506,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Estado Atual</p>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+                    <div className="w-2 h-2 rounded-none bg-amber-500 animate-pulse"></div>
                     <span className="text-xs font-bold text-white uppercase tracking-widest">{incident.estado}</span>
                   </div>
                 </div>
@@ -405,26 +514,60 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
 
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Contexto Técnico</p>
-                <div className="p-4 bg-white/5 rounded-2xl border border-white/5 text-xs text-gray-300 leading-relaxed">
+                <div className="p-4 bg-white/5 rounded-none border border-white/5 text-xs text-gray-300 leading-relaxed">
                   {incident.descricao}
                 </div>
               </div>
 
               {/* SLA Tracking */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-white/5 rounded-2xl border border-brand-border">
+                <div className="p-4 bg-white/5 rounded-none border border-brand-border">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">SLA Resposta</span>
                     <Clock size={12} className="text-emerald-500" />
                   </div>
-                  <p className="text-xs font-mono font-bold text-white">{format(new Date(incident.sla_resposta_limite), 'dd/MM HH:mm', { locale: ptBR })}</p>
+                  <p className="text-xs font-mono font-bold text-white">{safeFormat(incident.sla_resposta_limite, 'dd/MM HH:mm', { locale: ptBR })}</p>
                 </div>
-                <div className="p-4 bg-white/5 rounded-2xl border border-brand-border">
+                <div className="p-4 bg-white/5 rounded-none border border-brand-border">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">SLA Resolução</span>
                     <CheckCircle2 size={12} className="text-blue-500" />
                   </div>
-                  <p className="text-xs font-mono font-bold text-white">{format(new Date(incident.sla_resolucao_limite), 'dd/MM HH:mm', { locale: ptBR })}</p>
+                  <p className="text-xs font-mono font-bold text-white">{safeFormat(incident.sla_resolucao_limite, 'dd/MM HH:mm', { locale: ptBR })}</p>
+                </div>
+              </div>
+
+              {/* Financial Summary */}
+              <div className="p-6 bg-emerald-500/5 rounded-none border border-emerald-500/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+                    <Zap size={14} /> Resumo Financeiro do Incidente
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                   <div className="space-y-1">
+                      <p className="text-[9px] text-gray-500 uppercase font-bold">Peças (Real)</p>
+                      <p className="text-sm font-bold text-white">{partsUsed.reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0).toLocaleString('pt-MZ')} MT</p>
+                   </div>
+                   <div className="space-y-1 border-l border-white/5 pl-4">
+                      <p className="text-[9px] text-gray-500 uppercase font-bold">Serviços / Outros (Estimado)</p>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number" 
+                          value={estCost} 
+                          onChange={(e) => setEstCost(parseFloat(e.target.value) || 0)}
+                          onBlur={(e) => handleUpdateEstCost(parseFloat(e.target.value) || 0)}
+                          className="w-24 bg-white/5 border border-white/10 rounded-none px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                        />
+                        <span className="text-[10px] text-gray-600">MT</span>
+                      </div>
+                   </div>
+                   <div className="space-y-1 border-l border-white/5 pl-4">
+                      <p className="text-[9px] text-emerald-500 uppercase font-bold">Total Previsto</p>
+                      <p className="text-lg font-bold text-emerald-500">
+                        {(partsUsed.reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0) + estCost).toLocaleString('pt-MZ')} MT
+                      </p>
+                   </div>
                 </div>
               </div>
             </div>
@@ -447,7 +590,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                         value={actionDesc}
                         onChange={(e) => setActionDesc(e.target.value)}
                         placeholder="Registar ação técnica..."
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white resize-none"
+                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white resize-none"
                         rows={2}
                       />
                     </div>
@@ -455,7 +598,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                       <select
                         value={newStatus}
                         onChange={(e) => setNewStatus(e.target.value)}
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
+                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
                       >
                         <option value="Aberto" className="bg-brand-surface">Aberto</option>
                         <option value="Atribuído" className="bg-brand-surface">Atribuído</option>
@@ -463,13 +606,25 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                         <option value="Resolvido" className="bg-brand-surface">Resolvido</option>
                         <option value="Fechado" className="bg-brand-surface">Fechado</option>
                       </select>
+                      {canAssignIncidents(user.perfil) && (
+                        <select
+                          value={assignedTech}
+                          onChange={(e) => setAssignedTech(e.target.value)}
+                          className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs text-white"
+                        >
+                          <option value="" className="bg-brand-surface">Sem Técnico Atribuído</option>
+                          {techUsers.map(t => (
+                            <option key={t.id} value={t.id} className="bg-brand-surface">{t.nome}</option>
+                          ))}
+                        </select>
+                      )}
                       <button
                         type="submit"
                         disabled={submittingAction}
-                        className="w-full py-2.5 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest disabled:opacity-50"
+                        className="w-full py-2.5 bg-emerald-500 text-white rounded-none font-bold hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest disabled:opacity-50"
                       >
                         {submittingAction ? (
-                          <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                          <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div>
                         ) : <Send size={14} />}
                         Submeter
                       </button>
@@ -482,17 +637,17 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                 {incident.actions?.map((action: any) => (
                   <div key={action.id} className="flex gap-4 group">
                     <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-white/5 border border-brand-border flex items-center justify-center text-[10px] font-bold text-gray-400">
-                        {action.user_nome.charAt(0)}
+                      <div className="w-8 h-8 rounded-none bg-white/5 border border-brand-border flex items-center justify-center text-[10px] font-bold text-gray-400">
+                        {action.user_nome?.charAt(0) || '?'}
                       </div>
                       <div className="flex-1 w-px bg-brand-border my-2"></div>
                     </div>
                     <div className="flex-1 pb-6">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-bold text-white">{action.user_nome}</span>
-                        <span className="text-[9px] font-mono text-gray-600">{format(new Date(action.data_hora), 'dd MMM HH:mm', { locale: ptBR })}</span>
+                        <span className="text-[9px] font-mono text-gray-600">{safeFormat(action.data_hora, 'dd MMM HH:mm', { locale: ptBR })}</span>
                       </div>
-                      <div className="p-3 bg-white/[0.02] rounded-2xl border border-white/5 text-xs text-gray-400 leading-relaxed">
+                      <div className="p-3 bg-white/[0.02] rounded-none border border-white/5 text-xs text-gray-400 leading-relaxed">
                         {action.descricao_acao}
                       </div>
                     </div>
@@ -513,34 +668,52 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                 Checklist do Técnico
               </h3>
               <span className="text-[9px] font-mono text-emerald-500 font-bold">
-                {checklists.filter(c => c.is_completed).length}/{checklists.length}
+                {checklists.filter(c => c.is_completed).length}/{checklists.length} concluídas
               </span>
             </div>
             <div className="p-4 space-y-4">
               <form onSubmit={handleAddChecklist} className="relative">
                 <input
                   type="text"
-                  placeholder="Adicionar tarefa..."
+                  placeholder="Adicionar tarefa à checklist..."
                   value={newChecklistItem}
                   onChange={(e) => setNewChecklistItem(e.target.value)}
-                  className="w-full pl-3 pr-8 py-2 bg-white/5 border border-brand-border rounded-xl text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-white"
+                  disabled={loadingChecklist}
+                  className="w-full pl-3 pr-8 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-white disabled:opacity-50"
                 />
-                <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-500 hover:text-emerald-400">
-                  <Plus size={14} />
+                <button 
+                  type="submit" 
+                  disabled={loadingChecklist}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-500 hover:text-emerald-400 disabled:opacity-50"
+                >
+                  {loadingChecklist ? <div className="w-3 h-3 border-2 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div> : <Plus size={14} />}
                 </button>
               </form>
               <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                 {checklists.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 p-2 bg-white/[0.02] rounded-xl border border-white/5 group">
-                    <button 
+                  <div key={c.id} className="flex items-center gap-3 p-2 bg-white/[0.02] rounded-none border border-white/5 group hover:border-white/10 transition-all">
+                    <button
                       onClick={() => toggleChecklist(c.id, c.is_completed)}
-                      className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${c.is_completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-600 hover:border-emerald-500/50'}`}
+                      className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                        c.is_completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-600 hover:border-emerald-500/50'
+                      }`}
                     >
                       {c.is_completed && <CheckCircle2 size={10} />}
                     </button>
                     <span className={`text-[10px] flex-1 ${c.is_completed ? 'text-gray-500 line-through' : 'text-gray-300'}`}>
                       {c.task_description}
                     </span>
+                    {/* Delete button — visible on hover, only for creator or Gestor/Admin */}
+                    {(c.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
+                      <button
+                        onClick={() => handleDeleteChecklist(c.id)}
+                        disabled={loadingChecklist}
+                        className="opacity-0 group-hover:opacity-100 text-red-500/50 hover:text-red-500 transition-all p-1 disabled:opacity-30"
+                        title="Eliminar tarefa"
+                      >
+                        {loadingChecklist ? <div className="w-3 h-3 border-2 border-red-500/20 border-t-red-500 rounded-none animate-spin"></div> : <Trash2 size={12} />}
+                      </button>
+                    )}
                   </div>
                 ))}
                 {checklists.length === 0 && <p className="text-[9px] text-gray-600 text-center py-4 italic">Nenhuma tarefa definida</p>}
@@ -553,7 +726,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
             <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
               <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
                 <Package size={14} className="text-blue-500" />
-                Peças & Consumíveis
+                Peças &amp; Consumíveis
               </h3>
             </div>
             <div className="p-4 space-y-4">
@@ -561,46 +734,61 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                 <select
                   value={selectedPartId}
                   onChange={(e) => setSelectedPartId(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-brand-border rounded-xl text-[10px] focus:outline-none text-white"
+                  className="w-full px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] focus:outline-none text-white"
                 >
-                  <option value="" className="bg-brand-surface">Selecionar Peça...</option>
+                  <option value="" className="bg-brand-surface">Selecionar Peça do Inventário...</option>
                   {inventory.map(p => (
-                    <option key={p.id} value={p.id} className="bg-brand-surface" disabled={p.quantity_on_hand <= 0}>
-                      {p.name} ({p.quantity_on_hand} uni.)
+                    <option key={p.id} value={p.id} className="bg-brand-surface" disabled={p.quantidade <= 0}>
+                      {p.nome} ({p.quantidade} un.)
                     </option>
                   ))}
                 </select>
                 <div className="flex gap-2">
                   <input
-                    type="number"
-                    min="1"
-                    placeholder="Qtd"
+                    type="number" min="1" placeholder="Qtd"
                     value={partQuantity}
                     onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
-                    className="w-20 px-3 py-2 bg-white/5 border border-brand-border rounded-xl text-[10px] text-white"
+                    className="w-20 px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] text-white"
                   />
-                  <button type="submit" className="flex-1 py-2 bg-blue-500 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all">
-                    Adicionar
+                  <button 
+                    type="submit" 
+                    disabled={loadingPart}
+                    className="flex-1 py-2 bg-blue-500 text-white rounded-none font-bold text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2"
+                  >
+                    {loadingPart ? <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div> : 'Registar Material'}
                   </button>
                 </div>
               </form>
               <div className="space-y-2">
                 {partsUsed.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between p-2 bg-white/[0.02] border border-white/5 rounded-xl">
+                  <div key={p.id} className="flex items-center justify-between p-2 bg-white/[0.02] border border-white/5 rounded-none group hover:border-white/10 transition-all">
                     <div>
                       <p className="text-[10px] font-bold text-white">{p.inventory?.name}</p>
-                      <p className="text-[8px] text-gray-500 uppercase tracking-widest">{p.quantity_used} unidades @ {p.inventory?.unit_cost?.toLocaleString('pt-MZ')} MT</p>
+                      <p className="text-[8px] text-gray-500 uppercase tracking-widest">{p.quantity_used} un × {p.inventory?.unit_cost?.toLocaleString('pt-MZ')} MT</p>
                     </div>
-                    <span className="text-[10px] font-bold text-blue-500">
-                      {(p.quantity_used * (p.inventory?.unit_cost || 0)).toLocaleString('pt-MZ')} MT
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-blue-500">
+                        {(p.quantity_used * (p.inventory?.unit_cost || 0)).toLocaleString('pt-MZ')} MT
+                      </span>
+                      {/* Delete — only creator or Gestor/Admin */}
+                      {(p.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
+                        <button
+                          onClick={() => handleDeletePart(p.id)}
+                          disabled={loadingPart}
+                          className="opacity-0 group-hover:opacity-100 text-red-500/50 hover:text-red-500 transition-all p-1 disabled:opacity-30"
+                          title="Remover material (stock restaurado)"
+                        >
+                          {loadingPart ? <div className="w-3 h-3 border-2 border-red-500/20 border-t-red-500 rounded-none animate-spin"></div> : <Trash2 size={12} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {partsUsed.length > 0 && (
                   <div className="pt-2 border-t border-brand-border flex justify-between items-center">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase">Custo Total Mat.</span>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">Total Materiais</span>
                     <span className="text-xs font-bold text-white">
-                      {partsUsed.reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0).toLocaleString('pt-MZ')} MT
+                      {ensureArray<any>(partsUsed).reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0).toLocaleString('pt-MZ')} MT
                     </span>
                   </div>
                 )}
@@ -612,42 +800,77 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
           <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
             <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
               <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                <Timer size={14} className="text-blue-500" />
-                Registo de Tempo (Labor)
+                <Timer size={14} className="text-purple-500" />
+                Registo de Tempo de Intervenção
               </h3>
               {!activeTimer ? (
-                <button onClick={handleStartTimer} className="px-3 py-1 bg-blue-500 text-white text-[9px] font-bold uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-2">
-                  <Clock size={12} /> Iniciar Timer
+                <button
+                  onClick={handleStartTimer}
+                  disabled={loadingTimer}
+                  className="px-3 py-1 bg-purple-500 text-white text-[9px] font-bold uppercase tracking-widest hover:bg-purple-600 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {loadingTimer ? <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div> : <Clock size={12} />} Iniciar Timer
                 </button>
               ) : (
                 <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-mono text-blue-400 animate-pulse font-bold">{calculateDuration(activeTimer.start_time)}</span>
-                  <button onClick={handleStopTimer} className="px-3 py-1 bg-red-500 text-white text-[9px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all">
-                    Parar
+                  <div className="text-right">
+                    <p className="text-[9px] text-gray-500 font-mono">Iniciado às {safeFormat(activeTimer.start_time, 'HH:mm')}</p>
+                    <p className="text-[10px] font-mono text-purple-400 animate-pulse font-bold">&#9654; {calculateDuration(activeTimer.start_time)}</p>
+                  </div>
+                  <button
+                    onClick={handleStopTimer}
+                    disabled={loadingTimer}
+                    className="px-3 py-1 bg-red-500 text-white text-[9px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {loadingTimer && <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div>}
+                    ■ PARAR
                   </button>
                 </div>
               )}
             </div>
+            {/* Helper text */}
+            <div className="px-4 py-2 bg-purple-500/5 border-b border-brand-border">
+              <p className="text-[9px] text-gray-500 italic">
+                ⏱ Clique em Iniciar Timer para começar a contar o tempo de intervenção. Apenas o seu próprio tempo pode ser gerido. Cada registo fica vinculado ao seu nome para auditoria.
+              </p>
+            </div>
             <div className="p-4 space-y-3">
-              {laborLogs.map((log) => (
+              {laborLogs.filter((l:any) => l.end_time).map((log: any) => (
                 <div key={log.id} className="flex items-center justify-between text-[10px] border-b border-white/5 pb-2 last:border-0 last:pb-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded bg-white/5 flex items-center justify-center text-[8px] font-bold text-gray-500">
-                      {log.user_id?.slice(-2).toUpperCase()}
+                    <div className="w-7 h-7 rounded-none bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-[9px] font-bold text-purple-400">
+                      {(log.user_nome || 'T')[0].toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-gray-400 font-bold uppercase tracking-widest">Técnico #{log.user_id?.slice(-4)}</p>
-                      <p className="text-[9px] text-gray-600 font-mono">{format(new Date(log.start_time), 'dd/MM HH:mm')}</p>
+                      <p className="text-gray-300 font-bold">{log.user_nome || 'Técnico'}</p>
+                      <p className="text-[9px] text-gray-600 font-mono">
+                        {safeFormat(log.start_time, 'dd/MM HH:mm')} → {log.end_time ? safeFormat(log.end_time, 'HH:mm') : '...'}
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`font-bold ${!log.end_time ? 'text-blue-500' : 'text-white'}`}>
-                      {!log.end_time ? 'Em curso...' : calculateDuration(log.start_time, log.end_time)}
-                    </p>
+                    <p className="font-bold text-white">{calculateDuration(log.start_time, log.end_time)}</p>
                   </div>
                 </div>
               ))}
-              {laborLogs.length === 0 && <p className="text-[9px] text-gray-600 text-center py-4 italic">Nenhum registo de tempo.</p>}
+              {laborLogs.filter((l:any) => l.end_time).length === 0 && (
+                <p className="text-[9px] text-gray-600 text-center py-4 italic">Nenhum registo de tempo finalizado.</p>
+              )}
+              {/* Total accumulated time */}
+              {laborLogs.filter((l:any) => l.end_time).length > 0 && (() => {
+                const totalMin = laborLogs.filter((l:any) => l.end_time).reduce((acc: number, l: any) => {
+                  const diff = Math.floor((new Date(l.end_time).getTime() - new Date(l.start_time).getTime()) / 60000);
+                  return acc + diff;
+                }, 0);
+                return (
+                  <div className="pt-2 border-t border-brand-border flex justify-between items-center">
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">Total Horas Intervenção</span>
+                    <span className="text-sm font-bold text-purple-400">
+                      {Math.floor(totalMin / 60)}h {totalMin % 60}m
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -666,7 +889,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
             <div className="p-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {media?.map((item: any) => (
-                  <div key={item.id} className="relative aspect-square bg-black/20 border border-brand-border rounded-xl overflow-hidden group">
+                  <div key={item.id} className="relative aspect-square bg-black/20 border border-brand-border rounded-none overflow-hidden group">
                     <img src={item.image_url} alt="Evidência" className="w-full h-full object-cover" />
                     <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-bold uppercase text-white border border-white/10">
                       {item.type}
@@ -674,7 +897,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                   </div>
                 ))}
                 {(!media || media.length === 0) && (
-                  <div className="col-span-full py-12 text-center border-2 border-dashed border-brand-border rounded-xl">
+                  <div className="col-span-full py-12 text-center border-2 border-dashed border-brand-border rounded-none">
                     <ImageIcon size={32} className="text-gray-700 mx-auto mb-2" />
                     <p className="text-[10px] text-gray-600 uppercase font-bold tracking-widest">Nenhuma foto anexada</p>
                   </div>
@@ -687,3 +910,4 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     </div>
   );
 }
+

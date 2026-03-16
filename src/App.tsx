@@ -38,11 +38,13 @@ import Maintenance from './components/Maintenance';
 import Reports from './components/Reports';
 import Inventory from './components/Inventory';
 import AssetScanner from './components/AssetScanner';
-import Automation from './components/Automation';
 import Analytics from './components/Analytics';
+import SystemSettings from './components/SystemSettings';
+import ChangePassword from './components/ChangePassword';
+import { api } from './services/api';
 import { requestNotificationPermission, showPushNotification } from './utils/notifications';
 
-import { canManageUsers, canViewReports } from './utils/permissions';
+import { canManageUsers, canViewReports, canManageSettings } from './utils/permissions';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -55,6 +57,8 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isValidating, setIsValidating] = useState(!!localStorage.getItem('token'));
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light';
@@ -66,12 +70,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser && token) {
-      const parsedUser = JSON.parse(savedUser);
-      setUser(parsedUser);
-      connectSocket(parsedUser);
-      fetchNotifications();
+    const savedToken = localStorage.getItem('token'); // Changed from 'user' to 'token' for clarity
+    if (savedToken) {
+      const validateSession = async () => {
+        try {
+          const data = await api.get('/api/me');
+          setUser(data.user); // Assuming 'user' is the correct state variable
+          connectSocket(data.user);
+          fetchNotifications();
+        } catch (e) {
+          console.warn('Session invalid or user deleted:', e);
+          handleLogout();
+        } finally {
+          setIsValidating(false);
+        }
+      };
+      validateSession();
+    } else {
+      setIsValidating(false);
+      setUser(null); // Ensure user is null if no token
     }
     return () => disconnectSocket();
   }, [token]);
@@ -89,19 +106,22 @@ export default function App() {
   }, [user]);
 
   const fetchNotifications = async () => {
-    const res = await fetch('/api/notifications', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setNotifications(data);
+    try {
+      const data = await api.get('/api/notifications');
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setNotifications([]);
+    }
   };
 
   const markNotificationsRead = async () => {
-    await fetch('/api/notifications/read', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    setNotifications(prev => prev.map(n => ({ ...n, lida: 1 })));
+    try {
+      await api.post('/api/notifications/read');
+      setNotifications(prev => prev.map(n => ({ ...n, lida: 1 })));
+    } catch (e) {
+      console.error('Falha ao marcar notificações como lidas', e);
+    }
   };
 
   const toggleTheme = () => {
@@ -127,23 +147,62 @@ export default function App() {
     disconnectSocket();
   };
 
-  if (!token) {
+  if (isValidating || isSyncing) {
+    return (
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center relative overflow-hidden">
+        {/* Geometric Background for Loader */}
+        <div className="absolute inset-0 z-0">
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/5 rounded-none blur-[120px] animate-pulse"></div>
+        </div>
+        
+        <div className="relative z-10 flex flex-col items-center">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="w-24 h-24 bg-brand-surface border border-brand-border rounded-none flex items-center justify-center mb-10 shadow-2xl relative"
+          >
+            <div className="absolute inset-0 border border-emerald-500/30 border-t-emerald-500 rounded-none animate-spin"></div>
+            <ShieldCheck size={36} className="text-emerald-500" />
+          </motion.div>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="text-center"
+          >
+            <h2 className="text-sm font-black text-white tracking-[0.4em] uppercase mb-3">Estabelecendo Ligação Segura</h2>
+            <div className="flex items-center gap-3 justify-center">
+              <span className="w-1.5 h-1.5 bg-emerald-500 animate-pulse"></span>
+              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em]">Autenticação em Curso</span>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!token || !user) {
     return <Login onLogin={handleLogin} />;
   }
 
+  // Force Password Change redirection
+  if (user?.must_change_password) {
+    return <ChangePassword />;
+  }
+
   const navItems = [
-    { id: 'dashboard', label: 'Centro de Comando', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'properties', label: 'Propriedades', icon: Building2 },
-    { id: 'incidents', label: 'Incidentes', icon: AlertCircle },
     { id: 'assets', label: 'Ativos & Inspecções', icon: Cpu },
+    { id: 'incidents', label: 'Incidentes', icon: AlertCircle },
     { id: 'maintenance', label: 'Manutenção', icon: Wrench },
     { id: 'inventory', label: 'Inventário', icon: Package },
-    { id: 'automation', label: 'Automação', icon: Activity },
     { id: 'analytics', label: 'Indicadores', icon: ShieldCheck },
     { id: 'scanner', label: 'Scanner QR', icon: Scan },
     { id: 'planning', label: 'Roteiro Estratégico', icon: Calendar },
     { id: 'reports', label: 'Relatórios', icon: FileText, permission: canViewReports },
     { id: 'users', label: 'Utilizadores', icon: UsersIcon, permission: canManageUsers },
+    { id: 'settings', label: 'Configurações', icon: Settings, permission: canManageSettings },
   ];
 
 
@@ -158,8 +217,8 @@ export default function App() {
       {/* Premium Sidebar */}
       <motion.aside
         initial={false}
-        animate={{ width: isSidebarOpen ? 240 : 80 }}
-        className="bg-brand-surface/80 backdrop-blur-3xl border-r border-white/5 flex flex-col sticky top-0 h-screen z-50 shrink-0"
+        animate={{ width: isSidebarOpen ? 240 : (window.innerWidth < 1024 ? 0 : 80) }}
+        className={`bg-brand-surface/80 backdrop-blur-3xl border-r border-white/5 flex flex-col sticky top-0 h-screen z-50 shrink-0 overflow-hidden ${!isSidebarOpen && window.innerWidth < 1024 ? 'hidden md:flex' : ''}`}
       >
         <div className="p-4 flex items-center justify-between">
           {isSidebarOpen && (
@@ -168,7 +227,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               className="flex items-center gap-2"
             >
-              <div className="w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <div className="w-7 h-7 bg-emerald-500 rounded-none flex items-center justify-center shadow-lg shadow-emerald-500/20">
                 <ShieldCheck className="text-white w-4 h-4" />
               </div>
               <div>
@@ -179,7 +238,7 @@ export default function App() {
           )}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-1.5 hover:bg-white/5 rounded-lg transition-colors text-gray-500 hover:text-white"
+            className="p-1.5 hover:bg-white/5 rounded-none transition-colors text-gray-500 hover:text-white"
           >
             {isSidebarOpen ? <X size={14} /> : <Menu size={14} />}
           </button>
@@ -207,9 +266,9 @@ export default function App() {
         </nav>
 
         <div className="p-3 border-t border-brand-border">
-          <div className={`flex items-center gap-2 p-2 rounded-xl bg-white/5 mb-2 ${!isSidebarOpen && 'justify-center'}`}>
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold shadow-lg text-[10px]">
-              {user?.nome?.charAt(0)}
+          <div className={`flex items-center gap-2 p-2 rounded-none bg-white/5 mb-2 ${!isSidebarOpen && 'justify-center'}`}>
+            <div className="w-7 h-7 rounded-none bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold shadow-lg text-[10px]">
+              {user?.nome?.charAt(0) || 'U'}
             </div>
             {isSidebarOpen && (
               <div className="flex-1 min-w-0">
@@ -251,7 +310,7 @@ export default function App() {
               <input
                 type="text"
                 placeholder="Pesquisa Global..."
-                className="bg-white/5 border border-brand-border rounded-lg pl-8 pr-3 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30 w-48 transition-all"
+                className="bg-white/5 border border-brand-border rounded-none pl-8 pr-3 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30 w-48 transition-all"
               />
             </div>
             <button
@@ -282,7 +341,7 @@ export default function App() {
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-80 bg-brand-surface border border-brand-border rounded-2xl shadow-2xl z-50 overflow-hidden"
+                      className="absolute right-0 mt-2 w-80 bg-brand-surface border border-brand-border rounded-none shadow-2xl z-50 overflow-hidden"
                     >
                       <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Notificações</span>
@@ -336,12 +395,12 @@ export default function App() {
                       activeTab === 'assets' ? <Assets propertyId={propertyFilter} onClearFilter={() => setPropertyFilter(null)} initialAsset={selectedAsset} onClearAsset={() => setSelectedAsset(null)} /> :
                         activeTab === 'maintenance' ? <Maintenance /> :
                           activeTab === 'inventory' ? <Inventory /> :
-                            activeTab === 'automation' ? <Automation /> :
                               activeTab === 'analytics' ? <Analytics /> :
                                 activeTab === 'scanner' ? <AssetScanner onSelectAsset={(a) => { setSelectedAsset(a); setActiveTab('assets'); }} /> :
                                   activeTab === 'planning' ? <Planning5Y /> :
                                     activeTab === 'reports' ? <Reports /> :
-                                      activeTab === 'users' ? <Users /> : <Dashboard onSelectIncident={setSelectedIncidentId} />
+                                      activeTab === 'users' ? <Users /> : 
+                                        activeTab === 'settings' ? <SystemSettings /> : <Dashboard onSelectIncident={setSelectedIncidentId} />
               )}
             </motion.div>
           </AnimatePresence>

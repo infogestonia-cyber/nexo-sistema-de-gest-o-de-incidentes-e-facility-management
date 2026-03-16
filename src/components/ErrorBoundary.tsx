@@ -25,6 +25,18 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     componentDidCatch(error: Error, info: ErrorInfo) {
         console.error('[ErrorBoundary] Erro capturado:', error, info);
+        // Enviar erro para o servidor
+        fetch('/api/logs/remote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                level: 'ERROR',
+                message: `[CRASH] ${error.message}`,
+                data: { stack: error.stack, componentStack: info.componentStack },
+                url: window.location.href,
+                userAgent: navigator.userAgent
+            })
+        }).catch(() => { /* ignorar falha no log */ });
     }
 
     render() {

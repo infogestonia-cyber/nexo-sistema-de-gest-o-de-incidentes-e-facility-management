@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ensureArray } from '../utils/safeArray';
 import { Plus, Calendar, TrendingUp, Target, Search, Filter, X, ChevronRight, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { canManagePlanning } from '../utils/permissions';
@@ -8,7 +9,12 @@ export default function Planning5Y() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [user] = useState<any>(() => {
+    try {
+      const u = localStorage.getItem('user');
+      return u && u !== 'undefined' ? JSON.parse(u) : {};
+    } catch { return {}; }
+  });
   const [formData, setFormData] = useState({
     item: '',
     ano: new Date().getFullYear(),
@@ -21,12 +27,19 @@ export default function Planning5Y() {
   }, []);
 
   const fetchPlanning = async () => {
-    const res = await fetch('/api/planning-5y', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    });
-    const data = await res.json();
-    setPlanning(data);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/planning-5y', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!res.ok) throw new Error('Falha ao carregar planeamento');
+      const data = await res.json();
+      setPlanning(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setPlanning([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,12 +73,12 @@ export default function Planning5Y() {
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div>
       <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar Roteiro Estratégico...</p>
     </div>
   );
 
-  const years = Array.from(new Set(planning.map(p => p.ano))).sort();
+  const years = Array.from(new Set(ensureArray<any>(planning).map(p => p.ano))).sort();
 
   return (
     <div className="space-y-6 page-enter">
@@ -76,10 +89,10 @@ export default function Planning5Y() {
             <input
               type="text"
               placeholder="Consultar roteiro..."
-              className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64 text-xs"
+              className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64 text-xs"
             />
           </div>
-          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-xl border border-white/5">
+          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-none border border-white/5">
             <BarChart3 size={12} className="text-emerald-500" />
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Visão Estratégica</span>
           </div>
@@ -87,7 +100,7 @@ export default function Planning5Y() {
         {canManagePlanning(user.perfil) && (
           <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 text-xs"
+            className="bg-emerald-500 text-white px-6 py-2 rounded-none font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 text-xs"
           >
             <Plus size={16} />
             Novo Item Estratégico
@@ -106,7 +119,7 @@ export default function Planning5Y() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {[1, 2, 3, 4].map(q => {
-                const items = planning.filter(p => p.ano === year && p.trimestre === q);
+                const items = ensureArray<any>(planning).filter(p => p.ano === year && p.trimestre === q);
                 return (
                   <div key={q} className="bg-brand-surface rounded-none border border-brand-border p-5 flex flex-col h-full group hover:border-emerald-500/30 transition-all relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -114,14 +127,14 @@ export default function Planning5Y() {
                     </div>
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Trimestre {q}</span>
-                      <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                      <div className="w-6 h-6 rounded-none bg-white/5 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all">
                         <ChevronRight size={14} />
                       </div>
                     </div>
 
                     <div className="flex-1 space-y-3">
                       {items.length > 0 ? items.map(item => (
-                        <div key={item.id} className="bg-white/5 p-3 rounded-2xl border border-white/5 hover:border-emerald-500/20 transition-all">
+                        <div key={item.id} className="bg-white/5 p-3 rounded-none border border-white/5 hover:border-emerald-500/20 transition-all">
                           <h4 className="text-xs font-bold text-white mb-1">{item.item}</h4>
                           <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-2">{item.observacoes}</p>
                         </div>
@@ -168,7 +181,7 @@ export default function Planning5Y() {
                   <h2 className="text-lg font-bold tracking-tight">Objetivo Estratégico</h2>
                   <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-widest">Protocolo de Integração de Roteiro</p>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
+                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 rounded-none transition-colors">
                   <X size={20} />
                 </button>
               </div>
@@ -181,7 +194,7 @@ export default function Planning5Y() {
                     value={formData.item}
                     onChange={(e) => setFormData({ ...formData, item: e.target.value })}
                     placeholder="ex: Modernização Total de HVAC"
-                    className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white placeholder:text-gray-600"
+                    className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white placeholder:text-gray-600"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -192,7 +205,7 @@ export default function Planning5Y() {
                       required
                       value={formData.ano}
                       onChange={(e) => setFormData({ ...formData, ano: parseInt(e.target.value) })}
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
+                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -200,7 +213,7 @@ export default function Planning5Y() {
                     <select
                       value={formData.trimestre}
                       onChange={(e) => setFormData({ ...formData, trimestre: parseInt(e.target.value) })}
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
+                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
                     >
                       {[1, 2, 3, 4].map(q => <option key={q} value={q} className="bg-brand-surface">Trimestre {q}</option>)}
                     </select>
@@ -213,17 +226,17 @@ export default function Planning5Y() {
                     value={formData.observacoes}
                     onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
                     placeholder="Forneça contexto técnico e financeiro..."
-                    className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white placeholder:text-gray-600 resize-none"
+                    className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white placeholder:text-gray-600 resize-none"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-emerald-500 text-white rounded-none font-bold hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {submitting ? (
                     <>
-                      <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                      <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div>
                       A processar...
                     </>
                   ) : 'Confirmar Objetivo'}
@@ -236,3 +249,4 @@ export default function Planning5Y() {
     </div>
   );
 }
+

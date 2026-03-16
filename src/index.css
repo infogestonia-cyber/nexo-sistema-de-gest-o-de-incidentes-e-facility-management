@@ -72,22 +72,47 @@
   @apply !border-slate-200;
 }
 
-.light .text-gray-300 {
-  @apply !text-slate-700;
+.light .text-gray-300 { @apply !text-slate-800; }
+.light .text-gray-400 { @apply !text-slate-700; }
+.light .text-gray-500 { @apply !text-slate-600; }
+.light .text-gray-600 { @apply !text-slate-500; }
+
+.light .bg-brand-surface {
+  @apply !bg-white shadow-sm;
 }
 
-.light .text-gray-400 {
-  @apply !text-slate-600;
+.light .border-brand-border {
+  @apply !border-slate-200;
 }
 
-.light .text-gray-500 {
-  @apply !text-slate-500;
+  .light .bg-brand-surface {
+  @apply !bg-white shadow-sm;
 }
 
-/* Premium Scrollbar */
+.light .border-brand-border {
+  @apply !border-slate-200;
+}
+
+.light .bg-white/5 {
+  @apply !bg-slate-100/80;
+}
+
+.light .text-emerald-500 {
+  @apply !text-emerald-600;
+}
+
+.light .bg-emerald-500/10 {
+  @apply !bg-emerald-50;
+}
+
+.light .col-header {
+  @apply !text-slate-500 bg-slate-50/50;
+}
+
+/* Premium Geometric Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -95,34 +120,34 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0px;
 }
 
 .light ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.08);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .light ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.15);
 }
 
-/* Glassmorphism Classes */
+/* Geometric Classes */
 .glass {
-  @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-none;
 }
 
 .glass-dark {
-  @apply bg-black/40 backdrop-blur-2xl border border-white/5;
+  @apply bg-black/40 backdrop-blur-2xl border border-white/5 rounded-none;
 }
 
 /* Data Grid Styling */
 .data-row {
-  @apply border-b border-brand-border hover:bg-white/[0.02] transition-all duration-200 cursor-pointer;
+  @apply border-b border-brand-border hover:bg-white/[0.02] transition-all duration-200 cursor-pointer rounded-none;
 }
 
 .light .data-row:hover {
@@ -130,7 +155,7 @@
 }
 
 .col-header {
-  @apply font-mono font-bold text-[9px] text-gray-500 uppercase tracking-[0.15em] py-3 px-4;
+  @apply font-mono font-bold text-[9px] text-gray-500 uppercase tracking-[0.15em] py-3 px-4 bg-white/[0.01];
 }
 
 .data-value {
@@ -138,7 +163,7 @@
 }
 
 .sidebar-item {
-  @apply flex items-center gap-3 px-4 py-2.5 rounded-none transition-all duration-200 text-gray-500 hover:text-white hover:bg-white/5;
+  @apply flex items-center gap-3 px-4 py-3 rounded-none transition-all duration-200 text-gray-500 hover:text-white hover:bg-white/5 border-l-2 border-transparent;
 }
 
 .light .sidebar-item:hover {
@@ -146,27 +171,27 @@
 }
 
 .sidebar-item.active {
-  @apply text-emerald-500 bg-emerald-500/10 border border-emerald-500/20;
+  @apply text-emerald-500 bg-emerald-500/10 border-l-emerald-500;
 }
 
 .light .sidebar-item.active {
-  @apply bg-emerald-500/5 border-emerald-500/10;
+  @apply bg-emerald-500/5;
 }
 
-/* Animation for page transitions */
+/* Animation for page transitions - Linear for enterprise feel */
 .page-enter {
-  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: fadeIn 0.25s ease-out;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateX(4px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 }
 

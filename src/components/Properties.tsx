@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ensureArray } from '../utils/safeArray';
 import {
   Plus, Building2, User, Hash, Search, X, Globe,
   Cpu, Activity, AlertCircle, Wrench, ChevronRight,
@@ -6,7 +7,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { canCreateProperties } from '../utils/permissions';
-
+import { Toast, ToastType } from './ui/Toast';
 export default function Properties({ onSelectProperty }: { onSelectProperty: (id: string) => void }) {
   const [properties, setProperties] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
@@ -15,8 +16,13 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
   const [submitting, setSubmitting] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<any>(null);
   const [search, setSearch] = useState('');
-  const [toast, setToast] = useState<string | null>(null);
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const [user] = useState<any>(() => {
+    try {
+      const u = localStorage.getItem('user');
+      return u && u !== 'undefined' ? JSON.parse(u) : {};
+    } catch { return {}; }
+  });
   const [formData, setFormData] = useState({
     codigo: '',
     endereco: '',
@@ -24,9 +30,8 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
     referencia_interna: ''
   });
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+  const showToast = (msg: string, type: ToastType = 'success') => {
+    setToast({ msg, type });
   };
 
   useEffect(() => {
@@ -34,16 +39,26 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
   }, []);
 
   const fetchAll = async () => {
-    const token = localStorage.getItem('token');
-    const headers = { Authorization: `Bearer ${token}` };
-    const [propRes, assetRes] = await Promise.all([
-      fetch('/api/properties', { headers }),
-      fetch('/api/assets', { headers }),
-    ]);
-    const [propData, assetData] = await Promise.all([propRes.json(), assetRes.json()]);
-    setProperties(propData || []);
-    setAssets(assetData || []);
-    setLoading(false);
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const [propRes, assetRes] = await Promise.all([
+        fetch('/api/properties', { headers }),
+        fetch('/api/assets', { headers }),
+      ]);
+
+      const propData = propRes.ok ? await propRes.json() : [];
+      const assetData = assetRes.ok ? await assetRes.json() : [];
+
+      setProperties(Array.isArray(propData) ? propData : []);
+      setAssets(Array.isArray(assetData) ? assetData : []);
+    } catch (e) {
+      console.error(e);
+      setProperties([]);
+      setAssets([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,21 +77,21 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
         setIsModalOpen(false);
         fetchAll();
         setFormData({ codigo: '', endereco: '', inquilino: '', referencia_interna: '' });
-        showToast('✅ Propriedade registada com sucesso!');
+        showToast('Propriedade registada com sucesso!', 'success');
       } else {
         const err = await res.json();
-        showToast(err.error || 'Erro ao adicionar propriedade');
+        showToast(err.error || 'Erro ao adicionar propriedade', 'error');
       }
     } catch {
-      showToast('Erro de rede. Tente novamente.');
+      showToast('Erro de rede. Tente novamente.', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const getAssetsForProperty = (propId: string) => assets.filter(a => a.property_id === propId);
+  const getAssetsForProperty = (propId: string) => ensureArray<any>(assets).filter(a => a.property_id === propId);
 
-  const filtered = properties.filter(p =>
+  const filtered = ensureArray<any>(properties).filter(p =>
     !search ||
     p.endereco?.toLowerCase().includes(search.toLowerCase()) ||
     p.inquilino?.toLowerCase().includes(search.toLowerCase()) ||
@@ -85,7 +100,7 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div>
       <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar Propriedades...</p>
     </div>
   );
@@ -147,10 +162,10 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: 'Total de Ativos', value: propAssets.length, icon: Cpu, color: 'text-emerald-500' },
-            { label: 'Risco Alto', value: propAssets.filter(a => a.probabilidade_falha === 'Alta').length, icon: AlertCircle, color: 'text-red-500' },
-            { label: 'Risco Médio', value: propAssets.filter(a => a.probabilidade_falha === 'Média').length, icon: Activity, color: 'text-amber-500' },
-            { label: 'Risco Baixo', value: propAssets.filter(a => a.probabilidade_falha !== 'Alta' && a.probabilidade_falha !== 'Média').length, icon: Settings, color: 'text-blue-500' },
+            { label: 'Total de Ativos', value: ensureArray<any>(propAssets).length, icon: Cpu, color: 'text-emerald-500' },
+            { label: 'Risco Alto', value: ensureArray<any>(propAssets).filter(a => a.probabilidade_falha === 'Alta').length, icon: AlertCircle, color: 'text-red-500' },
+            { label: 'Risco Médio', value: ensureArray<any>(propAssets).filter(a => a.probabilidade_falha === 'Média').length, icon: Activity, color: 'text-amber-500' },
+            { label: 'Risco Baixo', value: ensureArray<any>(propAssets).filter(a => a.probabilidade_falha !== 'Alta' && a.probabilidade_falha !== 'Média').length, icon: Settings, color: 'text-blue-500' },
           ].map((s, i) => (
             <div key={i} className="bg-brand-surface border border-brand-border p-4">
               <div className="flex items-center gap-2 mb-1">
@@ -186,7 +201,7 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-brand-border">
-                  {propAssets.map(asset => (
+                  {ensureArray<any>(propAssets).map(asset => (
                     <tr key={asset.id} className="data-row">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
@@ -204,8 +219,8 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border ${asset.probabilidade_falha === 'Alta' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                            asset.probabilidade_falha === 'Média' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-                              'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          asset.probabilidade_falha === 'Média' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                            'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                           }`}>
                           {asset.probabilidade_falha || 'Baixa'}
                         </span>
@@ -226,19 +241,12 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
 
   return (
     <div className="space-y-6 page-enter">
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="fixed top-4 right-4 z-[200] bg-brand-surface border border-brand-border shadow-2xl px-5 py-3 text-sm font-bold text-white"
-          >
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Modern Premium Toast */}
+      <Toast
+        message={toast?.msg || null}
+        type={toast?.type}
+        onClose={() => setToast(null)}
+      />
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -294,9 +302,9 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map((prop) => {
+          {ensureArray<any>(filtered).map((prop) => {
             const propAssets = getAssetsForProperty(prop.id);
-            const highRisk = propAssets.filter(a => a.probabilidade_falha === 'Alta').length;
+            const highRisk = ensureArray<any>(propAssets).filter(a => a.probabilidade_falha === 'Alta').length;
             return (
               <motion.div
                 layout
@@ -447,7 +455,7 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
                       className="flex-1 py-3 bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {submitting ? (
-                        <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" /> A processar...</>
+                        <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin" /> A processar...</>
                       ) : 'Registar Propriedade'}
                     </button>
                   </div>
@@ -460,3 +468,4 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
     </div>
   );
 }
+

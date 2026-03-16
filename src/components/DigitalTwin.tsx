@@ -117,8 +117,8 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        const newInsp = await res.json();
-        setInspections(prev => [newInsp, ...prev]);
+        const newInsp = await res.json().catch(() => null);
+        if (newInsp) setInspections(prev => [newInsp, ...prev]);
         setIsNewInspection(false);
         setFormData({
           condicao_geral: 'Bom', anomalias_detectadas: [], descricao_anomalias: '',
@@ -151,8 +151,8 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
         body: JSON.stringify({ reading_value: newReading.value, unit: newReading.unit }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setMeterReadings(p => [data, ...p]);
+        const data = await res.json().catch(() => null);
+        if (data) setMeterReadings(p => [data, ...p]);
         setNewReading({ ...newReading, value: '' });
         showToast('✅ Leitura registada!');
       }
@@ -228,7 +228,7 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
         <div className="flex flex-col items-end gap-2 shrink-0">
           <button 
             onClick={() => setIsQRModalOpen(true)}
-            className="p-3 bg-white/5 border border-brand-border rounded-xl text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2 group"
+            className="p-3 bg-white/5 border border-brand-border rounded-none text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2 group"
           >
             <span className="text-[9px] font-bold uppercase tracking-widest hidden group-hover:block transition-all">Etiqueta QR</span>
             <Save size={16} />
@@ -284,12 +284,12 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
                     placeholder="Leitura"
                     value={newReading.value}
                     onChange={e => setNewReading({ ...newReading, value: e.target.value })}
-                    className="flex-1 px-3 py-2 bg-white/5 border border-brand-border rounded-xl text-[10px] text-white focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                    className="flex-1 px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] text-white focus:outline-none focus:ring-1 focus:ring-amber-500/30"
                   />
                   <select
                     value={newReading.unit}
                     onChange={e => setNewReading({ ...newReading, unit: e.target.value })}
-                    className="w-24 px-3 py-2 bg-white/5 border border-brand-border rounded-xl text-[10px] text-white focus:outline-none"
+                    className="w-24 px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] text-white focus:outline-none"
                   >
                     <option value="Horas">Horas</option>
                     <option value="Ciclos">Ciclos</option>
@@ -297,14 +297,14 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
                     <option value="Uni">Uni</option>
                   </select>
                 </div>
-                <button type="submit" disabled={submitting} className="w-full py-2 bg-amber-500 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20">
+                <button type="submit" disabled={submitting} className="w-full py-2 bg-amber-500 text-white rounded-none font-bold text-[10px] uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20">
                   Registar Leitura
                 </button>
               </form>
 
               <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                 {meterReadings.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                  <div key={r.id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-none">
                     <div>
                       <p className="text-xs font-bold text-white">{r.reading_value} {r.unit}</p>
                       <p className="text-[8px] text-gray-500 uppercase tracking-widest">{format(new Date(r.recorded_at), 'dd MMM yyyy', { locale: ptBR })}</p>
@@ -372,7 +372,7 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
       {/* Inspections List */}
       {loading ? (
         <div className="flex items-center justify-center h-32 gap-3">
-          <div className="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin" />
           <span className="text-xs text-gray-500 font-mono">A carregar inspecções...</span>
         </div>
       ) : inspections.length === 0 ? (
@@ -391,7 +391,7 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
               onClick={() => setSelectedInspection(insp)}
             >
               <div className="flex items-center gap-4">
-                <div className={`w-2 h-2 rounded-full ${insp.condicao_geral === 'Excelente' || insp.condicao_geral === 'Bom' ? 'bg-emerald-500' :
+                <div className={`w-2 h-2 rounded-none ${insp.condicao_geral === 'Excelente' || insp.condicao_geral === 'Bom' ? 'bg-emerald-500' :
                     insp.condicao_geral === 'Razoável' ? 'bg-amber-500' : 'bg-red-500'
                   }`} />
                 <div>
@@ -619,7 +619,7 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
                   className="flex-1 py-2.5 bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {submitting ? (
-                    <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" /> A guardar...</>
+                    <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin" /> A guardar...</>
                   ) : (
                     <><Save size={14} /> Guardar Inspecção</>
                   )}
@@ -730,3 +730,4 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
     </div>
   );
 }
+

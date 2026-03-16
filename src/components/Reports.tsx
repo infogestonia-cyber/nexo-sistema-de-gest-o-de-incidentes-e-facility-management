@@ -42,8 +42,9 @@ export default function Reports() {
       const res = await fetch(endpoint, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      if (!res.ok) throw new Error('Falha ao descarregar dados');
       const data = await res.json();
-      exportToExcel(data, fileName);
+      exportToExcel(Array.isArray(data) ? data : [], fileName);
     } catch (error) {
       console.error('Erro ao gerar relatório:', error);
       alert('Erro ao gerar o relatório. Por favor, tente novamente.');
@@ -102,10 +103,10 @@ export default function Reports() {
             className="bg-brand-surface p-6 rounded-none border border-brand-border flex flex-col gap-6 group transition-all hover:border-emerald-500/30"
           >
             <div className="flex items-start justify-between">
-              <div className={`p-4 rounded-2xl ${report.bgColor} ${report.color}`}>
+              <div className={`p-4 rounded-none ${report.bgColor} ${report.color}`}>
                 <report.icon size={24} />
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-lg border border-white/5">
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-none border border-white/5">
                 <CheckCircle2 size={10} className="text-emerald-500" />
                 <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Pronto para Extração</span>
               </div>
@@ -119,10 +120,10 @@ export default function Reports() {
             <button
               onClick={() => generateReport(report.id)}
               disabled={loading}
-              className="mt-auto w-full py-3 bg-white/5 hover:bg-emerald-500 hover:text-white border border-white/10 hover:border-emerald-500 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="mt-auto w-full py-3 bg-white/5 hover:bg-emerald-500 hover:text-white border border-white/10 hover:border-emerald-500 rounded-none text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {loading ? (
-                <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-none animate-spin" />
               ) : (
                 <Download size={14} />
               )}
@@ -133,7 +134,7 @@ export default function Reports() {
       </div>
 
       <div className="bg-brand-surface border border-brand-border p-6 rounded-none flex items-center gap-6">
-        <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-gray-500 shrink-0">
+        <div className="w-12 h-12 rounded-none bg-white/5 flex items-center justify-center text-gray-500 shrink-0">
           <FileText size={24} />
         </div>
         <div>
@@ -144,3 +145,4 @@ export default function Reports() {
     </div>
   );
 }
+

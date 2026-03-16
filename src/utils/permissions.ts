@@ -11,10 +11,16 @@ export const canReportIncidents = (role: UserRole) => ['Administrador', 'Gestor'
 
 export const canUpdateIncidents = (role: UserRole) => ['Administrador', 'Gestor', 'Técnico'].includes(role);
 
+export const canAssignIncidents = (role: UserRole) => ['Administrador', 'Gestor'].includes(role);
+
+export const canDeleteIncidentItems = (role: UserRole) => ['Administrador', 'Gestor'].includes(role);
+
 export const canManageMaintenance = (role: UserRole) => ['Administrador', 'Gestor'].includes(role);
 
 export const canManagePlanning = (role: UserRole) => ['Administrador', 'Gestor'].includes(role);
 
 export const canViewReports = (role: UserRole) => ['Administrador', 'Gestor'].includes(role);
+
+export const canManageSettings = (role: UserRole) => role === 'Administrador';
 
 export const isReadOnly = (role: UserRole) => role === 'Visualizador';

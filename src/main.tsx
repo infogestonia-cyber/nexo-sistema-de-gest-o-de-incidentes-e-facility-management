@@ -1,23 +1,19 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+import ClientApp from './ClientApp.tsx';
+import TecnicoApp from './TecnicoApp.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import './index.css';
 
 // Validar token JWT antes de inicializar a app
-// Se o token estiver expirado, limpar localStorage para forçar novo login
 function isTokenExpired(token: string | null): boolean {
   if (!token) return true;
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    // exp está em segundos; Date.now() em milissegundos
-    if (payload.exp && payload.exp * 1000 < Date.now()) {
-      return true;
-    }
+    if (payload.exp && payload.exp * 1000 < Date.now()) return true;
     return false;
-  } catch {
-    return true; // Token malformado
-  }
+  } catch { return true; }
 }
 
 const storedToken = localStorage.getItem('token');
@@ -26,11 +22,18 @@ if (isTokenExpired(storedToken)) {
   localStorage.removeItem('user');
 }
 
+// -------------------------------------------------------
+// ROUTING: /cliente → Cliente | /tecnico → Técnico | / → Admin
+// -------------------------------------------------------
+const isClientePath = window.location.pathname.startsWith('/cliente');
+const isTecnicoPath = window.location.pathname.startsWith('/tecnico');
+
+const RootComponent = isClientePath ? ClientApp : (isTecnicoPath ? TecnicoApp : App);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <RootComponent />
     </ErrorBoundary>
   </StrictMode>,
 );
-
