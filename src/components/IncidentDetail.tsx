@@ -1,46 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import { ensureArray } from '../utils/safeArray';
 import {
-  ArrowLeft,
-  Clock,
-  User,
-  MessageSquare,
-  Send,
-  CheckCircle2,
-  AlertCircle,
-  FileText,
-  Download,
-  Activity,
-  Zap,
-  ShieldCheck,
-  Users,
-  Building2,
-  Cpu,
-  ListChecks,
-  Package,
-  Plus,
-  Trash2,
-  Timer,
-  Camera,
-  Image as ImageIcon,
-  Upload
+  ArrowLeft, Clock, User, MessageSquare, Send, CheckCircle2,
+  AlertCircle, FileText, Download, Activity, Zap, ShieldCheck,
+  Users, Building2, Cpu, ListChecks, Package, Plus, Trash2,
+  Timer, Camera, Image as ImageIcon, Upload, MoreVertical
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import Markdown from 'react-markdown';
 import socket from '../services/socketService';
 import { jsPDF } from 'jspdf';
 import { canUpdateIncidents, canAssignIncidents } from '../utils/permissions';
 import { api } from '../services/api';
 
+// --- shadcn UI imports ---
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
+import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { ScrollArea } from './ui/scroll-area';
+import { Label } from './ui/label';
+import { MagicBadge } from './ui/magic';
+
 const safeFormat = (dateStr: string | null | undefined, formatStr: string, options?: any) => {
-  if (!dateStr) return '---';
+  if (!dateStr) return '—';
   try {
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return '---';
+    if (isNaN(d.getTime())) return '—';
     return format(d, formatStr, options);
   } catch (e) {
-    return '---';
+    return '—';
   }
 };
 
@@ -79,9 +71,6 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     fetchInventory();
     fetchLabor();
     fetchTechUsers();
-    
-    // fetchMedia moved to rely on incident object loaded first
-    // so we call it after fetchIncident
 
     socket.emit("join-room", {
       roomId: `incident-${id}`,
@@ -103,7 +92,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
         fetchChecklists();
         fetchPartsUsed();
         fetchLabor();
-        fetchMedia(); // Added refresh for media as well
+        fetchMedia(); 
       }
     });
 
@@ -120,7 +109,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
       if (data?.estado) setNewStatus(data.estado);
       if (data?.responsavel_id) setAssignedTech(data.responsavel_id);
       if (data?.custo_estimado) setEstCost(data.custo_estimado);
-      fetchMedia(data); // Prepend main image
+      fetchMedia(data); 
     } catch (e) {
       console.error(e);
     }
@@ -218,7 +207,6 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
       const data = await api.get(`/api/incidents/${id}/media`);
       const mediaList = Array.isArray(data) ? data : [];
       
-      // Inject main incident image as the first media item
       if (incData?.imagem_url) {
         mediaList.unshift({
           id: 'main-img',
@@ -345,12 +333,12 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
   };
 
   const handleDeleteChecklist = async (checklistId: string) => {
-    if (!window.confirm('Eliminar esta tarefa? A acao sera registada no log de auditoria.')) return;
+    if (!window.confirm('Eliminar esta tarefa? A ação será registada no log de auditoria.')) return;
     setLoadingChecklist(true);
     try {
       await api.delete(`/api/incidents/${id}/checklists/${checklistId}`);
       fetchChecklists();
-      fetchIncident(); // Refresh log
+      fetchIncident();
     } catch (err) {
       console.error(err);
     } finally {
@@ -367,7 +355,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
       setSelectedPartId('');
       setPartQuantity(1);
       fetchPartsUsed();
-      fetchIncident(); // Refresh log with auto-entry
+      fetchIncident();
     } catch (err) {
       console.error(err);
     } finally {
@@ -376,12 +364,12 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
   };
 
   const handleDeletePart = async (partId: string) => {
-    if (!window.confirm('Eliminar este material? O stock sera restaurado e a acao registada no log.')) return;
+    if (!window.confirm('Eliminar este material? O stock será restaurado e a ação registada no log.')) return;
     setLoadingPart(true);
     try {
       await api.delete(`/api/incidents/${id}/parts/${partId}`);
       fetchPartsUsed();
-      fetchIncident(); // Refresh log
+      fetchIncident();
     } catch (err) {
       console.error(err);
     } finally {
@@ -393,7 +381,11 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     e.preventDefault();
     setSubmittingAction(true);
     try {
-      await api.post(`/api/incidents/${id}/actions`, { descricao_acao: actionDesc, novo_estado: newStatus, responsavel_id: assignedTech });
+      await api.post(`/api/incidents/${id}/actions`, { 
+        descricao_acao: actionDesc, 
+        novo_estado: newStatus, 
+        responsavel_id: assignedTech 
+      });
       setActionDesc('');
       fetchIncident();
     } catch (err) {
@@ -403,14 +395,12 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     }
   };
 
-  const fetchSystemSummary = async () => {
-    // Standard system summary logic could go here
-  };
-
   const handleUpdateEstCost = async (val: number) => {
     setEstCost(val);
     try {
-      await api.post(`/api/incidents/${id}/actions`, { descricao_acao: `[Custo Estimado Atualizado] Novo valor: ${val.toLocaleString('pt-MZ')} MT` });
+      await api.post(`/api/incidents/${id}/actions`, { 
+        descricao_acao: `[Custo Estimado Atualizado] Novo valor: ${val.toLocaleString('pt-MZ')} MT` 
+      });
     } catch (err) {
       console.error(err);
     }
@@ -418,496 +408,521 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
 
   if (!incident) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div>
-      <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar dados do protocolo...</p>
+      <div className="w-8 h-8 border-[3px] border-primary/20 border-t-primary rounded-full animate-spin"></div>
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">A carregar detalhes do protocolo...</p>
     </div>
   );
 
   return (
-    <div className="space-y-6 page-enter">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors font-bold text-[10px] uppercase tracking-widest"
-        >
-          <ArrowLeft size={14} />
-          Voltar à Matriz
-        </button>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-none border border-white/5">
-            <Users size={12} className="text-emerald-500" />
-            <div className="flex -space-x-1.5">
+    <div className="space-y-6 pb-8">
+      {/* Header - Compact & Semantic */}
+      <div className="flex items-center justify-between border-b border-border pb-4">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onBack}
+            className="h-8 w-8 rounded-md"
+          >
+            <ArrowLeft size={14} />
+          </Button>
+          <div className="flex flex-col">
+            <h1 className="text-lg font-semibold tracking-tight leading-none mb-1">
+              Protocolo #{incident.id ? String(incident.id).slice(0, 8).toUpperCase() : '---'}
+            </h1>
+            <p className="text-xs text-muted-foreground font-medium">
+              {incident.categoria} &bull; {safeFormat(incident.created_at, 'dd MMM yyyy')}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-muted/50 border border-border rounded-md">
+            <Users size={12} className="text-muted-foreground" />
+            <div className="flex -space-x-1">
               {ensureArray<any>(activeUsers).map((u, i) => (
-                <div key={i} className="w-5 h-5 rounded-none border border-brand-surface bg-emerald-500 flex items-center justify-center text-[7px] font-bold text-white shadow-lg" title={u.user.nome}>
+                <div key={i} className="w-4 h-4 rounded-full border border-background bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-[7px] font-bold text-foreground" title={u.user.nome}>
                   {u.user?.nome?.charAt(0) || '?'}
                 </div>
               ))}
             </div>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider ml-1">Live</span>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleExportPDF}
-              className="px-4 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-none text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all flex items-center gap-2"
-            >
-              <FileText size={14} /> Relatório PDF
-            </button>
-            <button className="p-2 bg-brand-surface border border-brand-border rounded-none text-gray-400 hover:text-white transition-colors">
-              <Download size={16} />
-            </button>
-          </div>
+          <Button variant="outline" size="sm" onClick={handleExportPDF} className="h-8 shadow-none">
+            <FileText size={14} className="mr-2" /> PDF
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Left Column: Details & Actions */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-            <div className="p-6 bg-white/[0.02] border-b border-brand-border flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-none bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
-                  <AlertCircle size={20} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-white tracking-tight">Protocolo de {incident.categoria}</h2>
-                  <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-0.5">ID: #{incident.id ? String(incident.id).slice(0, 8) : '---'}</p>
-                </div>
+          <Card className="shadow-none border-border">
+            <CardHeader className="pb-4 border-b border-border flex flex-row items-center justify-between space-y-0">
+              <div className="space-y-1">
+                <CardTitle className="text-base">Detalhes da Intervenção</CardTitle>
+                <CardDescription className="text-xs">Contexto e identificação do ativo</CardDescription>
               </div>
-              <span className={`px-3 py-1 rounded-none text-[10px] font-bold uppercase tracking-wider ${incident.severidade === 'Crítico' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                incident.severidade === 'Alto' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' :
-                  'bg-blue-500/10 text-blue-500 border border-blue-500/20'
-                }`}>
-                Prioridade {incident.severidade}
-              </span>
-            </div>
-
-            <div className="px-6 py-4 bg-white/[0.01] border-b border-brand-border flex justify-between">
-              <div className="flex items-center gap-2">
-                <User size={14} className="text-gray-500" />
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Reportado por:</span>
-                <span className="text-xs font-medium text-white">{incident.criado_por_nome || 'Cliente / Sistema'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={14} className="text-blue-500" />
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Técnico Responsável:</span>
-                <span className="text-xs font-medium text-white">{incident.responsavel_nome || 'Não atribuído'}</span>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Localização do Ativo</p>
-                  <div className="flex items-center gap-2 text-white">
-                    <Building2 size={14} className="text-emerald-500" />
-                    <span className="text-xs font-medium">{incident.property_name}</span>
+              <Badge variant={
+                incident.severidade === 'Crítico' ? 'destructive' :
+                incident.severidade === 'Alto' ? 'warning' : 'outline'
+              } className="text-[10px] uppercase font-bold px-2.5">
+                {incident.severidade}
+              </Badge>
+            </CardHeader>
+            
+            <CardContent className="p-6 space-y-8">
+              {/* Top Meta Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-sm">
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Informação de Origem</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-muted flex items-center justify-center text-muted-foreground border border-border">
+                      <User size={16} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground leading-none">{incident.criado_por_nome || 'Cliente / Sistema'}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Reportado por</p>
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Estado Atual</p>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-none bg-amber-500 animate-pulse"></div>
-                    <span className="text-xs font-bold text-white uppercase tracking-widest">{incident.estado}</span>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Atribuição Técnica</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-muted flex items-center justify-center text-muted-foreground border border-border">
+                      <ShieldCheck size={16} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground leading-none">{incident.responsavel_nome || 'Não atribuído'}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Responsável</p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Contexto Técnico</p>
-                <div className="p-4 bg-white/5 rounded-none border border-white/5 text-xs text-gray-300 leading-relaxed">
+              <Separator className="bg-border/50" />
+
+              {/* Location and Status */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Localização Operacional</p>
+                  <div className="flex items-center gap-2 font-medium text-foreground">
+                    <Building2 size={16} className="text-muted-foreground shrink-0" />
+                    <span className="truncate">{incident.property_name || 'N/A'}</span>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Estado de Resolução</p>
+                  <div className="flex items-center gap-2 font-medium text-foreground">
+                    <div className={`w-2 h-2 rounded-full ${incident.estado === 'Resolvido' ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-orange-500'}`}></div>
+                    <span className="truncate uppercase text-xs tracking-wide">{incident.estado}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Descrição Técnica do Incidente</p>
+                <div className="text-sm leading-relaxed text-foreground bg-muted/30 p-4 rounded-md border border-border/50 whitespace-pre-wrap">
                   {incident.descricao}
                 </div>
               </div>
 
-              {/* SLA Tracking */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-white/5 rounded-none border border-brand-border">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">SLA Resposta</span>
-                    <Clock size={12} className="text-emerald-500" />
-                  </div>
-                  <p className="text-xs font-mono font-bold text-white">{safeFormat(incident.sla_resposta_limite, 'dd/MM HH:mm', { locale: ptBR })}</p>
+              {/* SLA Tracking - Stark Minimalist */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-md border border-border bg-muted/20 flex flex-col gap-1">
+                  <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">SLA Resposta Limite</p>
+                  <p className="text-sm font-semibold">{safeFormat(incident.sla_resposta_limite, 'dd/MM/yyyy HH:mm')}</p>
                 </div>
-                <div className="p-4 bg-white/5 rounded-none border border-brand-border">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">SLA Resolução</span>
-                    <CheckCircle2 size={12} className="text-blue-500" />
-                  </div>
-                  <p className="text-xs font-mono font-bold text-white">{safeFormat(incident.sla_resolucao_limite, 'dd/MM HH:mm', { locale: ptBR })}</p>
+                <div className="p-4 rounded-md border border-border bg-muted/20 flex flex-col gap-1">
+                  <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">SLA Resolução Limite</p>
+                  <p className="text-sm font-semibold">{safeFormat(incident.sla_resolucao_limite, 'dd/MM/yyyy HH:mm')}</p>
                 </div>
               </div>
 
-              {/* Financial Summary */}
-              <div className="p-6 bg-emerald-500/5 rounded-none border border-emerald-500/10 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-2">
-                    <Zap size={14} /> Resumo Financeiro do Incidente
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                   <div className="space-y-1">
-                      <p className="text-[9px] text-gray-500 uppercase font-bold">Peças (Real)</p>
-                      <p className="text-sm font-bold text-white">{partsUsed.reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0).toLocaleString('pt-MZ')} MT</p>
-                   </div>
-                   <div className="space-y-1 border-l border-white/5 pl-4">
-                      <p className="text-[9px] text-gray-500 uppercase font-bold">Serviços / Outros (Estimado)</p>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="number" 
-                          value={estCost} 
-                          onChange={(e) => setEstCost(parseFloat(e.target.value) || 0)}
-                          onBlur={(e) => handleUpdateEstCost(parseFloat(e.target.value) || 0)}
-                          className="w-24 bg-white/5 border border-white/10 rounded-none px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                        />
-                        <span className="text-[10px] text-gray-600">MT</span>
-                      </div>
-                   </div>
-                   <div className="space-y-1 border-l border-white/5 pl-4">
-                      <p className="text-[9px] text-emerald-500 uppercase font-bold">Total Previsto</p>
-                      <p className="text-lg font-bold text-emerald-500">
-                        {(partsUsed.reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0) + estCost).toLocaleString('pt-MZ')} MT
-                      </p>
-                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Operational Log */}
-          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-            <div className="p-6 border-b border-brand-border flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
-                <Activity size={16} className="text-emerald-500" />
-                Log Operacional
-              </h3>
-            </div>
-            <div className="p-6 space-y-6">
-              {canUpdateIncidents(user.perfil) && (
-                <form onSubmit={handleAddAction} className="space-y-4">
-                  <div className="flex gap-4">
-                    <div className="flex-1 space-y-2">
-                      <textarea
-                        value={actionDesc}
-                        onChange={(e) => setActionDesc(e.target.value)}
-                        placeholder="Registar ação técnica..."
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white resize-none"
-                        rows={2}
+              {/* Financial Summary - Flat NY Style */}
+              <div className="p-5 bg-background rounded-md border border-border">
+                <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Package size={14} /> Resumo Financeiro Projetado
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-muted-foreground uppercase font-bold">Materiais</p>
+                    <p className="text-base font-semibold">
+                      {partsUsed.reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0).toLocaleString('pt-MZ')} <span className="text-[10px] text-muted-foreground">MT</span>
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-muted-foreground uppercase font-bold">Mão-de-Obra</p>
+                    <div className="flex items-center gap-2">
+                      <Input 
+                        type="number" 
+                        min="0"
+                        value={estCost} 
+                        onChange={(e) => setEstCost(parseFloat(e.target.value) || 0)}
+                        onBlur={(e) => handleUpdateEstCost(parseFloat(e.target.value) || 0)}
+                        className="w-24 h-7 px-2 py-0 text-xs bg-background border-border"
                       />
-                    </div>
-                    <div className="w-48 space-y-2">
-                      <select
-                        value={newStatus}
-                        onChange={(e) => setNewStatus(e.target.value)}
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                      >
-                        <option value="Aberto" className="bg-brand-surface">Aberto</option>
-                        <option value="Atribuído" className="bg-brand-surface">Atribuído</option>
-                        <option value="Em progresso" className="bg-brand-surface">Em progresso</option>
-                        <option value="Resolvido" className="bg-brand-surface">Resolvido</option>
-                        <option value="Fechado" className="bg-brand-surface">Fechado</option>
-                      </select>
-                      {canAssignIncidents(user.perfil) && (
-                        <select
-                          value={assignedTech}
-                          onChange={(e) => setAssignedTech(e.target.value)}
-                          className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs text-white"
-                        >
-                          <option value="" className="bg-brand-surface">Sem Técnico Atribuído</option>
-                          {techUsers.map(t => (
-                            <option key={t.id} value={t.id} className="bg-brand-surface">{t.nome}</option>
-                          ))}
-                        </select>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={submittingAction}
-                        className="w-full py-2.5 bg-emerald-500 text-white rounded-none font-bold hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest disabled:opacity-50"
-                      >
-                        {submittingAction ? (
-                          <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div>
-                        ) : <Send size={14} />}
-                        Submeter
-                      </button>
+                      <span className="text-[10px] text-muted-foreground font-semibold">MT</span>
                     </div>
                   </div>
-                </form>
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-foreground uppercase font-bold">Total Final</p>
+                    <p className="text-xl font-bold text-foreground">
+                      {(partsUsed.reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0) + estCost).toLocaleString('pt-MZ')} <span className="text-xs">MT</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Operational Log - Segmented List Style */}
+          <Card className="shadow-none border-border">
+            <CardHeader className="border-b border-border p-5">
+              <div className="space-y-1">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity size={16} className="text-muted-foreground" />
+                  Registo de Intervenções
+                </CardTitle>
+                <CardDescription className="text-xs">Cronologia de ações e comentários técnicos</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {canUpdateIncidents(user.perfil) && (
+                <div className="p-5 border-b border-border bg-muted/10">
+                  <form onSubmit={handleAddAction} className="space-y-4">
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1">
+                        <Textarea
+                          value={actionDesc}
+                          onChange={(e) => setActionDesc(e.target.value)}
+                          placeholder="Nova observação técnica..."
+                          className="min-h-[100px] resize-none border-border bg-background"
+                          required
+                        />
+                      </div>
+                      <div className="w-full md:w-56 flex flex-col gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase text-muted-foreground font-bold">Estado</Label>
+                          <Select value={newStatus} onValueChange={setNewStatus}>
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Estado" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Aberto">Aberto</SelectItem>
+                              <SelectItem value="Atribuído">Atribuído</SelectItem>
+                              <SelectItem value="Em progresso">Em progresso</SelectItem>
+                              <SelectItem value="Resolvido">Resolvido</SelectItem>
+                              <SelectItem value="Fechado">Fechado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        {canAssignIncidents(user.perfil) && (
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase text-muted-foreground font-bold">Responsável</Label>
+                            <Select value={assignedTech} onValueChange={setAssignedTech}>
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Atribuir..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Nenhum</SelectItem>
+                                {techUsers.map(t => (
+                                  <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                        
+                        <Button
+                          type="submit"
+                          disabled={submittingAction}
+                          size="sm"
+                          className="w-full mt-auto"
+                        >
+                          {submittingAction ? '...' : (
+                            <>Registar Ação <Send size={14} className="ml-2" /></>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
               )}
 
-              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                {incident.actions?.map((action: any) => (
-                  <div key={action.id} className="flex gap-4 group">
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-none bg-white/5 border border-brand-border flex items-center justify-center text-[10px] font-bold text-gray-400">
-                        {action.user_nome?.charAt(0) || '?'}
+              <ScrollArea className="max-h-[500px] p-6">
+                <div className="space-y-6 relative before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-px before:bg-border">
+                  {incident.actions && incident.actions.length > 0 ? (
+                    incident.actions.map((action: any) => (
+                      <div key={action.id} className="flex gap-4 relative">
+                        <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-[10px] font-bold text-foreground z-10 shrink-0">
+                          {action.user_nome?.charAt(0) || '?'}
+                        </div>
+                        <div className="flex-1 pb-6">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-sm font-semibold text-foreground">{action.user_nome}</span>
+                            <span className="text-[10px] font-medium text-muted-foreground/60">
+                              {safeFormat(action.data_hora, 'dd MMM, HH:mm')}
+                            </span>
+                          </div>
+                          <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                            {action.descricao_acao}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex-1 w-px bg-brand-border my-2"></div>
+                    ))
+                  ) : (
+                    <div className="text-center py-10 text-muted-foreground opacity-50">
+                      <MessageSquare size={32} className="mx-auto mb-3" />
+                      <p className="text-xs font-medium uppercase tracking-widest">Sem registos</p>
                     </div>
-                    <div className="flex-1 pb-6">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-white">{action.user_nome}</span>
-                        <span className="text-[9px] font-mono text-gray-600">{safeFormat(action.data_hora, 'dd MMM HH:mm', { locale: ptBR })}</span>
-                      </div>
-                      <div className="p-3 bg-white/[0.02] rounded-none border border-white/5 text-xs text-gray-400 leading-relaxed">
-                        {action.descricao_acao}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Right Column: AI Insights & Operations */}
-        <div className="space-y-6">
-          {/* Checklist Section */}
-          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-            <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
-              <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                <ListChecks size={14} className="text-emerald-500" />
-                Checklist do Técnico
-              </h3>
-              <span className="text-[9px] font-mono text-emerald-500 font-bold">
-                {checklists.filter(c => c.is_completed).length}/{checklists.length} concluídas
-              </span>
-            </div>
-            <div className="p-4 space-y-4">
-              <form onSubmit={handleAddChecklist} className="relative">
-                <input
-                  type="text"
-                  placeholder="Adicionar tarefa à checklist..."
-                  value={newChecklistItem}
-                  onChange={(e) => setNewChecklistItem(e.target.value)}
-                  disabled={loadingChecklist}
-                  className="w-full pl-3 pr-8 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30 text-white disabled:opacity-50"
-                />
-                <button 
-                  type="submit" 
-                  disabled={loadingChecklist}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-500 hover:text-emerald-400 disabled:opacity-50"
-                >
-                  {loadingChecklist ? <div className="w-3 h-3 border-2 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div> : <Plus size={14} />}
-                </button>
-              </form>
-              <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                {checklists.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 p-2 bg-white/[0.02] rounded-none border border-white/5 group hover:border-white/10 transition-all">
-                    <button
-                      onClick={() => toggleChecklist(c.id, c.is_completed)}
-                      className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
-                        c.is_completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-600 hover:border-emerald-500/50'
-                      }`}
-                    >
-                      {c.is_completed && <CheckCircle2 size={10} />}
-                    </button>
-                    <span className={`text-[10px] flex-1 ${c.is_completed ? 'text-gray-500 line-through' : 'text-gray-300'}`}>
-                      {c.task_description}
-                    </span>
-                    {/* Delete button — visible on hover, only for creator or Gestor/Admin */}
-                    {(c.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
-                      <button
-                        onClick={() => handleDeleteChecklist(c.id)}
-                        disabled={loadingChecklist}
-                        className="opacity-0 group-hover:opacity-100 text-red-500/50 hover:text-red-500 transition-all p-1 disabled:opacity-30"
-                        title="Eliminar tarefa"
-                      >
-                        {loadingChecklist ? <div className="w-3 h-3 border-2 border-red-500/20 border-t-red-500 rounded-none animate-spin"></div> : <Trash2 size={12} />}
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {checklists.length === 0 && <p className="text-[9px] text-gray-600 text-center py-4 italic">Nenhuma tarefa definida</p>}
-              </div>
-            </div>
-          </div>
-
-          {/* Parts Section */}
-          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-            <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
-              <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                <Package size={14} className="text-blue-500" />
-                Peças &amp; Consumíveis
-              </h3>
-            </div>
-            <div className="p-4 space-y-4">
-              <form onSubmit={handleAddPart} className="space-y-2">
-                <select
-                  value={selectedPartId}
-                  onChange={(e) => setSelectedPartId(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] focus:outline-none text-white"
-                >
-                  <option value="" className="bg-brand-surface">Selecionar Peça do Inventário...</option>
-                  {inventory.map(p => (
-                    <option key={p.id} value={p.id} className="bg-brand-surface" disabled={p.quantidade <= 0}>
-                      {p.nome} ({p.quantidade} un.)
-                    </option>
-                  ))}
-                </select>
-                <div className="flex gap-2">
-                  <input
-                    type="number" min="1" placeholder="Qtd"
-                    value={partQuantity}
-                    onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
-                    className="w-20 px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] text-white"
-                  />
-                  <button 
-                    type="submit" 
-                    disabled={loadingPart}
-                    className="flex-1 py-2 bg-blue-500 text-white rounded-none font-bold text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center justify-center gap-2"
-                  >
-                    {loadingPart ? <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div> : 'Registar Material'}
-                  </button>
-                </div>
-              </form>
-              <div className="space-y-2">
-                {partsUsed.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between p-2 bg-white/[0.02] border border-white/5 rounded-none group hover:border-white/10 transition-all">
-                    <div>
-                      <p className="text-[10px] font-bold text-white">{p.inventory?.name}</p>
-                      <p className="text-[8px] text-gray-500 uppercase tracking-widest">{p.quantity_used} un × {p.inventory?.unit_cost?.toLocaleString('pt-MZ')} MT</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-blue-500">
-                        {(p.quantity_used * (p.inventory?.unit_cost || 0)).toLocaleString('pt-MZ')} MT
-                      </span>
-                      {/* Delete — only creator or Gestor/Admin */}
-                      {(p.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
-                        <button
-                          onClick={() => handleDeletePart(p.id)}
-                          disabled={loadingPart}
-                          className="opacity-0 group-hover:opacity-100 text-red-500/50 hover:text-red-500 transition-all p-1 disabled:opacity-30"
-                          title="Remover material (stock restaurado)"
-                        >
-                          {loadingPart ? <div className="w-3 h-3 border-2 border-red-500/20 border-t-red-500 rounded-none animate-spin"></div> : <Trash2 size={12} />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {partsUsed.length > 0 && (
-                  <div className="pt-2 border-t border-brand-border flex justify-between items-center">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase">Total Materiais</span>
-                    <span className="text-xs font-bold text-white">
-                      {ensureArray<any>(partsUsed).reduce((acc, p) => acc + (p.quantity_used * (p.inventory?.unit_cost || 0)), 0).toLocaleString('pt-MZ')} MT
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Labor Tracking Section */}
-          <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-            <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
-              <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                <Timer size={14} className="text-purple-500" />
-                Registo de Tempo de Intervenção
-              </h3>
+        <div className="space-y-6 text-sm">
+          
+          {/* Labor Tracking Section - Stark Modern */}
+          <Card className="shadow-none border-border">
+            <CardHeader className="p-4 border-b border-border flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-xs font-bold flex items-center gap-2">
+                <Timer size={14} className="text-muted-foreground" />
+                Registo de Tempo
+              </CardTitle>
               {!activeTimer ? (
-                <button
+                <Button
+                  size="sm"
                   onClick={handleStartTimer}
                   disabled={loadingTimer}
-                  className="px-3 py-1 bg-purple-500 text-white text-[9px] font-bold uppercase tracking-widest hover:bg-purple-600 transition-all flex items-center gap-2 disabled:opacity-50"
+                  variant="outline"
+                  className="h-7 text-[10px] font-bold px-2.5"
                 >
-                  {loadingTimer ? <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div> : <Clock size={12} />} Iniciar Timer
-                </button>
+                  {loadingTimer ? '...' : 'INICIAR'}
+                </Button>
               ) : (
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-[9px] text-gray-500 font-mono">Iniciado às {safeFormat(activeTimer.start_time, 'HH:mm')}</p>
-                    <p className="text-[10px] font-mono text-purple-400 animate-pulse font-bold">&#9654; {calculateDuration(activeTimer.start_time)}</p>
-                  </div>
-                  <button
-                    onClick={handleStopTimer}
-                    disabled={loadingTimer}
-                    className="px-3 py-1 bg-red-500 text-white text-[9px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all flex items-center gap-2 disabled:opacity-50"
-                  >
-                    {loadingTimer && <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div>}
-                    ■ PARAR
-                  </button>
-                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleStopTimer}
+                  disabled={loadingTimer}
+                  className="h-7 text-[10px] font-bold px-2.5"
+                >
+                  {calculateDuration(activeTimer.start_time)} • PARAR
+                </Button>
               )}
-            </div>
-            {/* Helper text */}
-            <div className="px-4 py-2 bg-purple-500/5 border-b border-brand-border">
-              <p className="text-[9px] text-gray-500 italic">
-                ⏱ Clique em Iniciar Timer para começar a contar o tempo de intervenção. Apenas o seu próprio tempo pode ser gerido. Cada registo fica vinculado ao seu nome para auditoria.
-              </p>
-            </div>
-            <div className="p-4 space-y-3">
-              {laborLogs.filter((l:any) => l.end_time).map((log: any) => (
-                <div key={log.id} className="flex items-center justify-between text-[10px] border-b border-white/5 pb-2 last:border-0 last:pb-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-none bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-[9px] font-bold text-purple-400">
-                      {(log.user_nome || 'T')[0].toUpperCase()}
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="max-h-[250px] p-4">
+                <div className="space-y-2">
+                  {laborLogs.filter((l:any) => l.end_time).map((log: any) => (
+                    <div key={log.id} className="flex items-center justify-between text-xs p-2.5 bg-muted/10 rounded border border-border/50">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 border border-border flex items-center justify-center text-[9px] font-bold font-mono">
+                          {(log.user_nome || 'T')[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold leading-none mb-0.5">{log.user_nome || 'Técnico'}</p>
+                          <p className="text-[8px] text-muted-foreground uppercase opacity-70">
+                            {safeFormat(log.start_time, 'HH:mm')} &rarr; {safeFormat(log.end_time, 'HH:mm')}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="font-mono text-[10px] font-bold text-muted-foreground">
+                        {calculateDuration(log.start_time, log.end_time)}
+                      </span>
                     </div>
-                    <div>
-                      <p className="text-gray-300 font-bold">{log.user_nome || 'Técnico'}</p>
-                      <p className="text-[9px] text-gray-600 font-mono">
-                        {safeFormat(log.start_time, 'dd/MM HH:mm')} → {log.end_time ? safeFormat(log.end_time, 'HH:mm') : '...'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-white">{calculateDuration(log.start_time, log.end_time)}</p>
-                  </div>
+                  ))}
+                  {laborLogs.filter((l:any) => l.end_time).length === 0 && (
+                    <p className="text-[10px] text-muted-foreground text-center py-4 uppercase tracking-widest opacity-40">Sem registos finalizados</p>
+                  )}
                 </div>
-              ))}
-              {laborLogs.filter((l:any) => l.end_time).length === 0 && (
-                <p className="text-[9px] text-gray-600 text-center py-4 italic">Nenhum registo de tempo finalizado.</p>
-              )}
-              {/* Total accumulated time */}
+              </ScrollArea>
               {laborLogs.filter((l:any) => l.end_time).length > 0 && (() => {
                 const totalMin = laborLogs.filter((l:any) => l.end_time).reduce((acc: number, l: any) => {
                   const diff = Math.floor((new Date(l.end_time).getTime() - new Date(l.start_time).getTime()) / 60000);
                   return acc + diff;
                 }, 0);
                 return (
-                  <div className="pt-2 border-t border-brand-border flex justify-between items-center">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase">Total Horas Intervenção</span>
-                    <span className="text-sm font-bold text-purple-400">
-                      {Math.floor(totalMin / 60)}h {totalMin % 60}m
+                  <div className="p-3 bg-muted/30 border-t border-border flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Acumulado</span>
+                    <span className="text-sm font-bold text-foreground">
+                      {Math.floor(totalMin / 60)}h {Math.floor(totalMin % 60)}m
                     </span>
                   </div>
                 );
               })()}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          {/* Galeria de Fotos */}
-          <div className="bg-brand-surface border border-brand-border rounded-none overflow-hidden mt-6">
-            <div className="p-4 bg-white/[0.02] border-b border-brand-border flex items-center justify-between">
-              <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                <Camera size={14} className="text-emerald-500" />
-                Galeria de Provas (Media)
-              </h3>
-              <div className="flex gap-2">
-                <button onClick={() => handleUploadMedia('antes')} className="text-[9px] font-bold uppercase bg-white/5 hover:bg-white/10 px-3 py-1 rounded border border-white/10 transition-colors">Anexar Antes</button>
-                <button onClick={() => handleUploadMedia('depois')} className="text-[9px] font-bold uppercase bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 px-3 py-1 rounded border border-emerald-500/20 transition-colors">Anexar Depois</button>
+          {/* Checklist Section - Minimalist */}
+          <Card className="shadow-none border-border">
+            <CardHeader className="p-4 border-b border-border flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-xs font-bold flex items-center gap-2">
+                <ListChecks size={14} className="text-muted-foreground" />
+                Checklist
+              </CardTitle>
+              <span className="text-[10px] font-bold text-muted-foreground px-1.5 py-0.5 border border-border rounded bg-muted">
+                {checklists.filter(c => c.is_completed).length}/{checklists.length}
+              </span>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <form onSubmit={handleAddChecklist} className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="Nova tarefa..."
+                  value={newChecklistItem}
+                  onChange={(e) => setNewChecklistItem(e.target.value)}
+                  disabled={loadingChecklist}
+                  className="flex-1 h-8 text-xs bg-muted/10 border-border"
+                  required
+                />
+                <Button 
+                  type="submit" 
+                  size="icon"
+                  disabled={loadingChecklist}
+                  variant="outline"
+                  className="h-8 w-8"
+                >
+                  {loadingChecklist ? <Activity size={12} className="animate-spin" /> : <Plus size={14} />}
+                </Button>
+              </form>
+              
+              <div className="space-y-1.5">
+                {checklists.map((c) => (
+                  <div key={c.id} className="flex items-center gap-3 p-2 hover:bg-muted/30 rounded transition-colors group">
+                    <button
+                      onClick={() => toggleChecklist(c.id, c.is_completed)}
+                      className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                        c.is_completed ? 'bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100 text-background' : 'border-border'
+                      }`}
+                    >
+                      {c.is_completed && <CheckCircle2 size={10} className="stroke-[4]" />}
+                    </button>
+                    <span className={`text-xs flex-1 truncate transition-all ${c.is_completed ? 'text-muted-foreground line-through opacity-50' : 'text-foreground'}`}>
+                      {c.task_description}
+                    </span>
+                    {(c.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteChecklist(c.id)}
+                        disabled={loadingChecklist}
+                        className="w-6 h-6 text-muted-foreground/30 hover:text-destructive opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    )}
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            </CardContent>
+          </Card>
+
+          {/* Materials Consumption - Flat List */}
+          <Card className="shadow-none border-border">
+            <CardHeader className="p-4 border-b border-border flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-xs font-bold flex items-center gap-2">
+                <Package size={14} className="text-muted-foreground" />
+                Materiais
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <form onSubmit={handleAddPart} className="flex flex-col gap-2">
+                <Select value={selectedPartId} onValueChange={val => setSelectedPartId(val)} required>
+                  <SelectTrigger className="w-full h-8 text-xs">
+                    <SelectValue placeholder="Peça..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inventory.map(p => (
+                      <SelectItem key={p.id} value={p.id} disabled={p.quantidade <= 0}>
+                        {p.nome} ({p.quantidade})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Input
+                    type="number" min="1" placeholder="Qtd"
+                    value={partQuantity}
+                    onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
+                    className="h-8 text-xs text-center border-border"
+                    required
+                  />
+                  <Button type="submit" size="sm" disabled={loadingPart} className="flex-1 h-8 text-[10px] font-bold">
+                    REQUISITAR
+                  </Button>
+                </div>
+              </form>
+              
+              <div className="divide-y divide-border/50 border-t border-border mt-4">
+                {partsUsed.map((p) => (
+                  <div key={p.id} className="py-3 flex justify-between items-start group">
+                    <div className="min-w-0 pr-2">
+                      <p className="text-xs font-semibold truncate text-foreground">{p.inventory?.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {p.quantity_used} x {p.inventory?.unit_cost?.toLocaleString('pt-MZ')} MT
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-xs font-mono font-bold">
+                        {(p.quantity_used * (p.inventory?.unit_cost || 0)).toLocaleString('pt-MZ')} <span className="text-[10px]">MT</span>
+                      </span>
+                      {(p.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeletePart(p.id)}
+                          disabled={loadingPart}
+                          className="w-6 h-6 text-muted-foreground/30 hover:text-destructive opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 size={12} />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Multimedia Gallery - Clean Grid */}
+          <Card className="shadow-none border-border">
+            <CardHeader className="p-4 border-b border-border flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-xs font-bold flex items-center gap-2">
+                <Camera size={14} className="text-muted-foreground" />
+                Fotografias
+              </CardTitle>
+              <div className="flex gap-1">
+                <Button size="icon" variant="outline" onClick={() => handleUploadMedia('antes')} className="h-7 w-7"><Upload size={12} /></Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-2 gap-2">
                 {media?.map((item: any) => (
-                  <div key={item.id} className="relative aspect-square bg-black/20 border border-brand-border rounded-none overflow-hidden group">
+                  <div key={item.id} className="relative aspect-square rounded border border-border overflow-hidden group">
                     <img src={item.image_url} alt="Evidência" className="w-full h-full object-cover" />
-                    <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-bold uppercase text-white border border-white/10">
-                      {item.type}
+                    <div className="absolute top-1 left-1">
+                      <Badge variant="outline" className="bg-background/90 text-[8px] px-1 py-0 border-border/50 uppercase">
+                        {item.type}
+                      </Badge>
                     </div>
                   </div>
                 ))}
                 {(!media || media.length === 0) && (
-                  <div className="col-span-full py-12 text-center border-2 border-dashed border-brand-border rounded-none">
-                    <ImageIcon size={32} className="text-gray-700 mx-auto mb-2" />
-                    <p className="text-[10px] text-gray-600 uppercase font-bold tracking-widest">Nenhuma foto anexada</p>
+                  <div className="col-span-full py-8 flex flex-col items-center justify-center border border-dashed border-border rounded-md bg-muted/20 opacity-30">
+                    <ImageIcon size={24} className="text-muted-foreground mb-2" />
+                    <p className="text-[10px] font-bold uppercase tracking-widest">Sem imagens</p>
                   </div>
                 )}
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
   );
 }
-

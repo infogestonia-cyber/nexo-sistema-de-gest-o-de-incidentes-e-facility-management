@@ -1,19 +1,34 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ClipboardList, Plus, CheckCircle2, AlertTriangle, Clock,
   X, Calendar, User, FileText, ChevronDown, Wrench, Eye, Shield,
   AlertCircle, ThumbsUp, ThumbsDown, Camera, Save, MoreVertical,
-  ChevronRight, Activity
+  ChevronRight, Activity, QrCode, Printer, History
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
 
+// --- shadcn UI imports ---
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Label } from './ui/label';
+import { ScrollArea } from './ui/scroll-area';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
+import { Textarea } from './ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Checkbox } from './ui/checkbox';
+
 const CONDITION_OPTIONS = ['Excelente', 'Bom', 'Razoável', 'Degradado', 'Crítico'];
 const ANOMALY_TYPES = ['Visual', 'Funcional', 'Ruído', 'Vibração', 'Vazamento', 'Corrosão', 'Outra'];
 
-export default function ManualInspection({ asset, onBack }: { asset: any; onBack: () => void }) {
+export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () => void }) {
   const [inspections, setInspections] = useState<any[]>([]);
   const [maintenanceData, setMaintenanceData] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -24,7 +39,6 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
   const [meterReadings, setMeterReadings] = useState<any[]>([]);
   const [newReading, setNewReading] = useState({ value: '', unit: 'Horas' });
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     condicao_geral: 'Bom',
@@ -42,11 +56,6 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
     observacoes: '',
     inspector_id: '',
   });
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -87,12 +96,12 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
     }));
   };
 
-  const handleComponentToggle = (key: string) => {
+  const handleComponentToggle = (key: string, checked: boolean) => {
     setFormData(prev => ({
       ...prev,
       componentes_verificados: {
         ...prev.componentes_verificados,
-        [key]: !prev.componentes_verificados[key as keyof typeof prev.componentes_verificados],
+        [key]: checked,
       },
     }));
   };
@@ -126,12 +135,7 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
           componentes_verificados: { estrutura: false, conexoes: false, limpeza: false, seguranca: false, funcionamento: false },
           observacoes: '', inspector_id: '',
         });
-        showToast('✅ Inspecção registada com sucesso!');
-      } else {
-        showToast('❌ Erro ao guardar inspecção. Tente novamente.');
       }
-    } catch (err) {
-      showToast('❌ Erro de rede ao submeter inspecção.');
     } finally {
       setSubmitting(false);
     }
@@ -154,580 +158,495 @@ export default function ManualInspection({ asset, onBack }: { asset: any; onBack
         const data = await res.json().catch(() => null);
         if (data) setMeterReadings(p => [data, ...p]);
         setNewReading({ ...newReading, value: '' });
-        showToast('✅ Leitura registada!');
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Condition colour mapping
-  const conditionColor = (c: string) => {
-    if (c === 'Excelente') return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-    if (c === 'Bom') return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-    if (c === 'Razoável') return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
-    if (c === 'Degradado') return 'text-orange-400 bg-orange-500/10 border-orange-500/20';
-    return 'text-red-400 bg-red-500/10 border-red-500/20';
+  const conditionVariant = (c: string) => {
+    if (c === 'Excelente' || c === 'Bom') return 'success';
+    if (c === 'Razoável') return 'warning';
+    return 'destructive';
   };
 
   const lastInspection = inspections[0];
-  const nextMaintenance = maintenanceData[0];
+
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-4">
+      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar Digital Twin...</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-5 page-enter">
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="fixed top-4 right-4 z-[200] bg-brand-surface border border-brand-border shadow-2xl px-5 py-3 text-sm font-bold text-white"
-          >
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors font-bold text-[10px] uppercase tracking-widest"
-        >
-          <ArrowLeft size={14} />
-          Voltar ao Portfólio
-        </button>
-        <div className="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/5">
-          <ClipboardList size={12} className="text-emerald-500" />
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Inspecção Manual</span>
+      <div className="flex items-center justify-between border-b border-border pb-4">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" onClick={onBack} className="h-8 w-8">
+            <ArrowLeft size={14} />
+          </Button>
+          <div className="flex flex-col">
+            <h1 className="text-lg font-semibold tracking-tight leading-none mb-1">
+              Digital Twin: {asset.nome}
+            </h1>
+            <p className="text-xs text-muted-foreground font-medium">
+              Gestão de Ciclo de Vida & Monitorização Operacional
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => setIsQRModalOpen(true)}>
+            <QrCode size={14} />
+            Etiqueta
+          </Button>
+          <Button variant="default" size="sm" className="h-8 gap-2" onClick={() => setIsNewInspection(true)}>
+            <Plus size={14} />
+            Nova Inspecção
+          </Button>
         </div>
       </div>
 
-      {/* Asset Header Card */}
-      <div className="bg-brand-surface border border-brand-border p-5 flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[9px] font-mono text-gray-500 uppercase tracking-widest mb-1">
-            ATIVO #{asset.id?.toString().padStart(5, '0')}
-          </p>
-          <h2 className="text-lg font-bold text-white tracking-tight">{asset.nome}</h2>
-          <div className="flex flex-wrap gap-3 mt-2">
-            <span className="text-[10px] text-gray-400 flex items-center gap-1">
-              <Activity size={10} className="text-emerald-500" /> {asset.categoria}
-            </span>
-            {asset.localizacao_detalhada && (
-              <span className="text-[10px] text-gray-400">📍 {asset.localizacao_detalhada}</span>
-            )}
-            {asset.data_instalacao && (
-              <span className="text-[10px] text-gray-400">
-                📅 Instalado em {format(new Date(asset.data_instalacao), 'dd MMM yyyy', { locale: ptBR })}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          <button 
-            onClick={() => setIsQRModalOpen(true)}
-            className="p-3 bg-white/5 border border-brand-border rounded-none text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2 group"
-          >
-            <span className="text-[9px] font-bold uppercase tracking-widest hidden group-hover:block transition-all">Etiqueta QR</span>
-            <Save size={16} />
-          </button>
-          {lastInspection && (
-            <span className={`px-2 py-1 text-[9px] font-bold uppercase tracking-widest border ${conditionColor(lastInspection.condicao_geral)}`}>
-              {lastInspection.condicao_geral}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
-          {/* Summary Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: 'Inspecções', value: inspections.length, color: 'text-emerald-500' },
-              { label: 'Última Condição', value: lastInspection?.condicao_geral || '—', color: lastInspection ? conditionColor(lastInspection.condicao_geral).split(' ')[0] : 'text-gray-500' },
-              { label: 'Horas / Ciclos', value: meterReadings[0]?.reading_value || '0', color: 'text-amber-500' },
-              { label: 'Manutenções', value: maintenanceData.length, color: 'text-blue-500' },
-            ].map((s, i) => (
-              <div key={i} className="bg-brand-surface border border-brand-border p-4">
-                <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{s.label}</p>
-                <p className={`text-sm font-bold mt-1 ${s.color}`}>{s.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Inspections List */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Histórico de Inspecções</h3>
-            </div>
-            {/* ... rest of inspections list logic ... */}
-          </div>
-        </div>
-
-        {/* Right Column: Meter Readings */}
-        <div className="space-y-5">
-          <div className="bg-brand-surface border border-brand-border flex flex-col h-full">
-            <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
-              <h3 className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                <Activity size={14} className="text-amber-500" />
-                Medição de Uso
-              </h3>
-            </div>
-            <div className="p-4 flex-1 space-y-4">
-              <form onSubmit={handleMeterSubmit} className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    placeholder="Leitura"
-                    value={newReading.value}
-                    onChange={e => setNewReading({ ...newReading, value: e.target.value })}
-                    className="flex-1 px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] text-white focus:outline-none focus:ring-1 focus:ring-amber-500/30"
-                  />
-                  <select
-                    value={newReading.unit}
-                    onChange={e => setNewReading({ ...newReading, unit: e.target.value })}
-                    className="w-24 px-3 py-2 bg-white/5 border border-brand-border rounded-none text-[10px] text-white focus:outline-none"
-                  >
-                    <option value="Horas">Horas</option>
-                    <option value="Ciclos">Ciclos</option>
-                    <option value="Km">Km</option>
-                    <option value="Uni">Uni</option>
-                  </select>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Left Column - Main Content */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="shadow-none border-border">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded bg-muted flex items-center justify-center text-muted-foreground border border-border">
+                  <Shield size={20} />
                 </div>
-                <button type="submit" disabled={submitting} className="w-full py-2 bg-amber-500 text-white rounded-none font-bold text-[10px] uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20">
-                  Registar Leitura
-                </button>
-              </form>
-
-              <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                {meterReadings.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-none">
-                    <div>
-                      <p className="text-xs font-bold text-white">{r.reading_value} {r.unit}</p>
-                      <p className="text-[8px] text-gray-500 uppercase tracking-widest">{format(new Date(r.recorded_at), 'dd MMM yyyy', { locale: ptBR })}</p>
-                    </div>
-                    {/* Comparison trend would go here */}
-                  </div>
-                ))}
-                {meterReadings.length === 0 && <p className="text-[9px] text-gray-600 text-center py-8 italic uppercase tracking-widest">Sem leituras</p>}
-              </div>
-            </div>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condição</p>
+                  <p className="text-sm font-bold">{lastInspection?.condicao_geral || 'Não Avaliado'}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="shadow-none border-border">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded bg-muted flex items-center justify-center text-muted-foreground border border-border">
+                  <Activity size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Uso Acumulado</p>
+                  <p className="text-sm font-bold">{meterReadings[0]?.reading_value || '0'} {meterReadings[0]?.unit || 'un'}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="shadow-none border-border">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded bg-muted flex items-center justify-center text-muted-foreground border border-border">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Última Inspecção</p>
+                  <p className="text-sm font-bold">
+                    {lastInspection ? format(new Date(lastInspection.data_inspecao), 'dd MMM yyyy', { locale: ptBR }) : 'Pendente'}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+
+          <Tabs defaultValue="history" className="w-full">
+            <TabsList className="w-full justify-start bg-muted/20 border-b border-border rounded-none h-11 p-0">
+              <TabsTrigger value="history" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 text-xs font-bold uppercase tracking-widest">Histórico de Inspecções</TabsTrigger>
+              <TabsTrigger value="meter" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 text-xs font-bold uppercase tracking-widest">Leituras de Medidores</TabsTrigger>
+              <TabsTrigger value="info" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 text-xs font-bold uppercase tracking-widest">Ficha Técnica</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="history" className="pt-4 animate-in fade-in duration-300">
+              <Card className="shadow-none border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-[10px] uppercase font-bold">Data</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold">Condição</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold">Anomalias</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {inspections.map((insp) => (
+                      <TableRow key={insp.id} className="cursor-pointer group" onClick={() => setSelectedInspection(insp)}>
+                        <TableCell className="text-xs font-medium">
+                          {format(new Date(insp.data_inspecao), 'dd MMM yyyy, HH:mm', { locale: ptBR })}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={conditionVariant(insp.condicao_geral) as any} className="text-[9px] h-4">
+                            {insp.condicao_geral}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate text-[11px] text-muted-foreground">
+                          {insp.anomalias_detectadas || 'Nenhuma'}
+                        </TableCell>
+                        <TableCell>
+                          {insp.requer_manutencao && <Badge variant="destructive" className="text-[8px] h-3.5 px-1">MANUTENÇÃO</Badge>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {inspections.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic text-xs">
+                          Nenhuma inspecção registada até ao momento.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="meter" className="pt-4 animate-in fade-in duration-300">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="md:col-span-1 shadow-none border-border">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Nova Medição</CardTitle>
+                    <CardDescription className="text-xs">Registe leituras de uso: horas, ciclos, etc.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleMeterSubmit} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase font-bold">Valor</Label>
+                        <Input
+                          type="number"
+                          value={newReading.value}
+                          onChange={e => setNewReading({ ...newReading, value: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase font-bold">Unidade</Label>
+                        <Select value={newReading.unit} onValueChange={val => setNewReading({ ...newReading, unit: val })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Horas">Horas</SelectItem>
+                            <SelectItem value="Ciclos">Ciclos</SelectItem>
+                            <SelectItem value="Km">Km</SelectItem>
+                            <SelectItem value="Uni">Uni</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button type="submit" disabled={submitting} className="w-full text-xs font-bold">
+                        EFETUAR LEITURA
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+                
+                <Card className="md:col-span-2 shadow-none border-border">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Cronologia de Uso</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-[10px] uppercase font-bold">Data</TableHead>
+                          <TableHead className="text-[10px] uppercase font-bold">Leitura</TableHead>
+                          <TableHead className="text-[10px] uppercase font-bold text-right">Diferença</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {meterReadings.map((r, i) => (
+                          <TableRow key={r.id}>
+                            <TableCell className="text-xs">{format(new Date(r.recorded_at), 'dd MMM yyyy', { locale: ptBR })}</TableCell>
+                            <TableCell className="text-xs font-bold">{r.reading_value} {r.unit}</TableCell>
+                            <TableCell className="text-right text-[10px] text-muted-foreground">
+                              {i < meterReadings.length - 1 ? `+${(Number(r.reading_value) - Number(meterReadings[i+1].reading_value)).toFixed(1)}` : '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="info" className="pt-4 animate-in fade-in duration-300">
+              <Card className="shadow-none border-border">
+                <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Identificação</Label>
+                      <p className="mt-1 font-semibold">{asset.nome}</p>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Categoria do Ativo</Label>
+                      <p className="mt-1 font-semibold">{asset.categoria}</p>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Localização Detalhada</Label>
+                      <p className="mt-1 font-semibold">{asset.localizacao_detalhada || 'Sem informação'}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Unidade de Alojamento</Label>
+                      <p className="mt-1 font-semibold">{asset.property_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data de Comissionamento</Label>
+                      <p className="mt-1 font-semibold">{asset.data_instalacao || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Estado de Obsolescência</Label>
+                      <p className="mt-1">
+                        {asset.obsoleto ? (
+                          <Badge variant="destructive" className="text-[9px]">OBSOLETO ({asset.data_obsolescencia})</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[9px] bg-primary/10 border-primary/20 text-primary">OPERATIVO</Badge>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Right Column - Status Card */}
+        <div className="space-y-6">
+          <Card className="shadow-none border-border bg-zinc-950 text-white">
+            <CardHeader className="p-4 border-b border-white/10">
+              <CardTitle className="text-[10px] uppercase font-bold flex items-center gap-2">
+                <Shield size={14} className="text-zinc-400" />
+                Saúde do Ativo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-end justify-between">
+                <span className="text-[10px] text-zinc-400 font-bold uppercase">Estado Geral</span>
+                <span className={`text-sm font-bold ${lastInspection?.condicao_geral === 'Excelente' ? 'text-emerald-400' : 'text-zinc-100'}`}>
+                  {lastInspection?.condicao_geral || 'N/D'}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-1000 ${
+                    lastInspection?.condicao_geral === 'Excelente' ? 'bg-emerald-500 w-full' :
+                    lastInspection?.condicao_geral === 'Bom' ? 'bg-emerald-500/70 w-4/5' :
+                    lastInspection?.condicao_geral === 'Razoável' ? 'bg-amber-500 w-1/2' : 'bg-destructive w-1/4'
+                  }`}
+                />
+              </div>
+              <Separator className="bg-white/5" />
+              <div className="space-y-2">
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Ações Requeridas</p>
+                {lastInspection?.requer_manutencao ? (
+                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded flex items-start gap-2">
+                    <AlertTriangle size={14} className="text-destructive shrink-0 mt-0.5" />
+                    <p className="text-[10px] font-medium leading-relaxed">Intervenção técnica imediata sugerida pela última inspeção.</p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded flex items-start gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                    <p className="text-[10px] font-medium leading-relaxed">Nenhuma ação crítica pendente reportada.</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="shadow-none border-border">
+            <CardHeader className="p-4 border-b border-border">
+                <CardTitle className="text-[10px] uppercase font-bold flex items-center gap-2 text-muted-foreground">
+                  <History size={14} />
+                  Contexto Histórico
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Planos Ativos</span>
+                <span className="font-bold">{maintenanceData.length}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Incidentes Críticos</span>
+                <span className="font-bold text-destructive">0</span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
       {/* QR Modal */}
-      <AnimatePresence>
-        {isQRModalOpen && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsQRModalOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white p-8 rounded-none shadow-2xl relative z-10 text-center">
-              <h3 className="text-black font-bold uppercase tracking-widest text-[10px] mb-6">Etiqueta de Ativo - Nexo SGFM</h3>
-              <div className="bg-white p-4 inline-block border-2 border-black">
-                <QRCodeSVG value={JSON.stringify({ id: asset.id, name: asset.nome })} size={180} />
-              </div>
-              <p className="text-black font-bold text-sm mt-4 tracking-tight">{asset.nome}</p>
-              <p className="text-gray-500 font-mono text-[9px] mt-1">ID: #{asset.id?.toString().padStart(6, '0')}</p>
-              <button 
-                onClick={() => window.print()}
-                className="mt-8 w-full py-3 bg-black text-white font-bold uppercase tracking-widest text-[10px] hover:bg-gray-800 transition-all"
-              >
-                Imprimir Etiqueta
-              </button>
-            </motion.div>
+      <Dialog open={isQRModalOpen} onOpenChange={setIsQRModalOpen}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle>Etiqueta de Ativo</DialogTitle>
+            <DialogDescription>ID: #{asset.id?.toString().padStart(6, '0')}</DialogDescription>
+          </DialogHeader>
+          <div className="p-8 flex flex-col items-center gap-6">
+            <div className="p-4 bg-white border-2 border-zinc-950 rounded-lg">
+               <QRCodeSVG value={JSON.stringify({ id: asset.id, name: asset.nome })} size={180} />
+            </div>
+            <div className="space-y-1">
+              <p className="font-bold text-sm tracking-tight">{asset.nome}</p>
+              <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Nexo SGFM Asset Tag</p>
+            </div>
           </div>
-        )}
-      </AnimatePresence>
-
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: 'Inspecções', value: inspections.length, color: 'text-emerald-500' },
-          { label: 'Última Condição', value: lastInspection?.condicao_geral || '—', color: lastInspection ? conditionColor(lastInspection.condicao_geral).split(' ')[0] : 'text-gray-500' },
-          { label: 'Anomalias Detectadas', value: inspections.filter(i => i.anomalias_detectadas && i.anomalias_detectadas !== '').length, color: 'text-amber-500' },
-          { label: 'Planos de Manutenção', value: maintenanceData.length, color: 'text-blue-500' },
-        ].map((s, i) => (
-          <div key={i} className="bg-brand-surface border border-brand-border p-4">
-            <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{s.label}</p>
-            <p className={`text-sm font-bold mt-1 ${s.color}`}>{s.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Histórico de Inspecções</h3>
-        <button
-          onClick={() => setIsNewInspection(true)}
-          className="bg-emerald-500 text-white px-5 py-2 font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 text-xs shadow-lg shadow-emerald-500/20"
-        >
-          <Plus size={14} />
-          Nova Inspecção
-        </button>
-      </div>
-
-      {/* Inspections List */}
-      {loading ? (
-        <div className="flex items-center justify-center h-32 gap-3">
-          <div className="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin" />
-          <span className="text-xs text-gray-500 font-mono">A carregar inspecções...</span>
-        </div>
-      ) : inspections.length === 0 ? (
-        <div className="bg-brand-surface border border-brand-border p-10 text-center">
-          <ClipboardList size={32} className="text-gray-600 mx-auto mb-3" />
-          <p className="text-sm font-bold text-gray-400">Nenhuma inspecção registada</p>
-          <p className="text-xs text-gray-600 mt-1">Clique em "Nova Inspecção" para registar a primeira</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {inspections.map((insp) => (
-            <motion.div
-              key={insp.id}
-              layout
-              className="bg-brand-surface border border-brand-border p-4 flex items-center justify-between hover:border-emerald-500/30 transition-colors cursor-pointer group"
-              onClick={() => setSelectedInspection(insp)}
-            >
-              <div className="flex items-center gap-4">
-                <div className={`w-2 h-2 rounded-none ${insp.condicao_geral === 'Excelente' || insp.condicao_geral === 'Bom' ? 'bg-emerald-500' :
-                    insp.condicao_geral === 'Razoável' ? 'bg-amber-500' : 'bg-red-500'
-                  }`} />
-                <div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-white">
-                      {format(new Date(insp.data_inspecao), "dd MMM yyyy 'às' HH:mm", { locale: ptBR })}
-                    </span>
-                    <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border ${conditionColor(insp.condicao_geral)}`}>
-                      {insp.condicao_geral}
-                    </span>
-                    {insp.requer_manutencao && (
-                      <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border bg-red-500/10 border-red-500/20 text-red-400">
-                        Manutenção Requerida
-                      </span>
-                    )}
-                  </div>
-                  {insp.anomalias_detectadas && insp.anomalias_detectadas !== '' && (
-                    <p className="text-[10px] text-amber-400 mt-0.5">⚠ {insp.anomalias_detectadas}</p>
-                  )}
-                  {insp.observacoes && (
-                    <p className="text-[10px] text-gray-500 mt-0.5 truncate max-w-[400px]">{insp.observacoes}</p>
-                  )}
-                </div>
-              </div>
-              <ChevronRight size={14} className="text-gray-600 group-hover:text-emerald-500 transition-colors" />
-            </motion.div>
-          ))}
-        </div>
-      )}
+          <Button variant="default" className="w-full gap-2" onClick={() => window.print()}>
+            <Printer size={16} />
+            Imprimir Etiqueta
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {/* New Inspection Modal */}
-      <AnimatePresence>
-        {isNewInspection && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsNewInspection(false)}
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-brand-surface w-full max-w-2xl shadow-2xl border border-brand-border relative z-10 flex flex-col max-h-[90vh]"
-            >
-              {/* Modal Header */}
-              <div className="p-5 bg-emerald-500 text-white flex items-center justify-between shrink-0">
-                <div>
-                  <h2 className="text-sm font-bold tracking-tight">Nova Ficha de Inspecção</h2>
-                  <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-widest mt-0.5">{asset.nome}</p>
-                </div>
-                <button onClick={() => setIsNewInspection(false)} className="p-2 hover:bg-white/20 transition-colors">
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Scrollable Form Body */}
-              <div className="overflow-y-auto flex-1 p-6">
-                <form onSubmit={handleSubmit} id="inspection-form" className="space-y-6">
-                  {/* Condition */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">
-                      Condição Geral do Ativo
-                    </label>
-                    <div className="grid grid-cols-5 gap-2">
-                      {CONDITION_OPTIONS.map(opt => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setFormData(p => ({ ...p, condicao_geral: opt }))}
-                          className={`py-2 text-[10px] font-bold uppercase tracking-wide border transition-all ${formData.condicao_geral === opt
-                              ? conditionColor(opt)
-                              : 'border-brand-border text-gray-500 hover:border-gray-400'
-                            }`}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Checklist */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">
-                      Componentes Verificados
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {Object.entries({
-                        estrutura: 'Estrutura Física',
-                        conexoes: 'Conexões / Cabos',
-                        limpeza: 'Limpeza',
-                        seguranca: 'Segurança',
-                        funcionamento: 'Funcionamento Geral',
-                      }).map(([key, label]) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => handleComponentToggle(key)}
-                          className={`flex items-center gap-2 p-3 border text-xs font-bold transition-all ${formData.componentes_verificados[key as keyof typeof formData.componentes_verificados]
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                              : 'border-brand-border text-gray-500 hover:border-gray-400'
-                            }`}
-                        >
-                          <CheckCircle2 size={14} className={formData.componentes_verificados[key as keyof typeof formData.componentes_verificados] ? 'text-emerald-500' : 'text-gray-600'} />
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Anomalies */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">
-                      Tipo de Anomalias Detectadas
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {ANOMALY_TYPES.map(type => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => handleAnomalyToggle(type)}
-                          className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide border transition-all ${formData.anomalias_detectadas.includes(type)
-                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                              : 'border-brand-border text-gray-500 hover:border-gray-400'
-                            }`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {formData.anomalias_detectadas.length > 0 && (
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">
-                        Descrição das Anomalias
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={formData.descricao_anomalias}
-                        onChange={e => setFormData(p => ({ ...p, descricao_anomalias: e.target.value }))}
-                        placeholder="Descreva em detalhe as anomalias encontradas..."
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none placeholder-gray-600"
-                      />
-                    </div>
-                  )}
-
-                  {/* Actions taken */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">
-                      Acções Imediatas Tomadas
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={formData.accoes_imediatas}
-                      onChange={e => setFormData(p => ({ ...p, accoes_imediatas: e.target.value }))}
-                      placeholder="Descreva quaisquer acções tomadas durante a inspecção..."
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none placeholder-gray-600"
-                    />
-                  </div>
-
-                  {/* Require maintenance */}
-                  <div className="flex items-center justify-between p-4 bg-white/5 border border-brand-border">
-                    <div>
-                      <p className="text-xs font-bold text-white">Requer Manutenção?</p>
-                      <p className="text-[10px] text-gray-500 mt-0.5">Assinale se o ativo necessita de intervenção técnica</p>
-                    </div>
-                    <button
+      <Dialog open={isNewInspection} onOpenChange={setIsNewInspection}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Nova Inspecção Técnica</DialogTitle>
+            <DialogDescription>Avaliação sistemática do estado operativo: {asset.nome}</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            <form onSubmit={handleSubmit} id="inspection-form" className="space-y-8 py-4">
+              <div className="space-y-3">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Condição Geral</Label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {CONDITION_OPTIONS.map(opt => (
+                    <Button
+                      key={opt}
                       type="button"
-                      onClick={() => setFormData(p => ({ ...p, requer_manutencao: !p.requer_manutencao }))}
-                      className={`flex items-center gap-2 px-4 py-2 border font-bold text-xs transition-all ${formData.requer_manutencao
-                          ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                          : 'border-brand-border text-gray-500 hover:border-gray-400'
-                        }`}
+                      variant={formData.condicao_geral === opt ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setFormData(p => ({ ...p, condicao_geral: opt }))}
+                      className="text-[10px] h-8 font-bold"
                     >
-                      {formData.requer_manutencao ? <AlertTriangle size={14} /> : <ThumbsUp size={14} />}
-                      {formData.requer_manutencao ? 'Sim' : 'Não'}
-                    </button>
-                  </div>
+                      {opt}
+                    </Button>
+                  ))}
+                </div>
+              </div>
 
-                  {/* Inspector and Observations */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">Inspector</label>
-                      <select
-                        value={formData.inspector_id}
-                        onChange={e => setFormData(p => ({ ...p, inspector_id: e.target.value }))}
-                        className="w-full px-3 py-3 bg-white/5 border border-brand-border text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      >
-                        <option value="" className="bg-brand-surface">Selecionar Inspector</option>
-                        {users.map(u => (
-                          <option key={u.id} value={u.id} className="bg-brand-surface">{u.nome}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">Observações Adicionais</label>
-                      <textarea
-                        rows={3}
-                        value={formData.observacoes}
-                        onChange={e => setFormData(p => ({ ...p, observacoes: e.target.value }))}
-                        placeholder="Notas e observações gerais..."
-                        className="w-full px-3 py-2 bg-white/5 border border-brand-border text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none placeholder-gray-600"
+              <div className="space-y-3">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Checklist de Conformidade</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {Object.entries({
+                    estrutura: 'Integridade Estrutural',
+                    conexoes: 'Sistemas Elétricos / Conexões',
+                    limpeza: 'Estado de Higiene / Limpeza',
+                    seguranca: 'Protocolos de Segurança',
+                    funcionamento: 'Performance Operacional',
+                  }).map(([key, label]) => (
+                    <div key={key} className="flex items-center space-x-2 p-3 border border-border rounded-md bg-muted/10">
+                      <Checkbox 
+                        id={key} 
+                        checked={formData.componentes_verificados[key as keyof typeof formData.componentes_verificados]}
+                        onCheckedChange={(checked) => handleComponentToggle(key, !!checked)}
                       />
+                      <label htmlFor={key} className="text-xs font-medium leading-none cursor-pointer">{label}</label>
                     </div>
-                  </div>
-                </form>
+                  ))}
+                </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="p-5 border-t border-brand-border flex items-center justify-between gap-3 shrink-0 bg-brand-surface">
-                <button
-                  type="button"
-                  onClick={() => setIsNewInspection(false)}
-                  className="px-5 py-2.5 border border-brand-border text-gray-400 hover:text-white hover:border-gray-400 transition-colors font-bold text-xs"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  form="inspection-form"
-                  disabled={submitting}
-                  className="flex-1 py-2.5 bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {submitting ? (
-                    <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin" /> A guardar...</>
-                  ) : (
-                    <><Save size={14} /> Guardar Inspecção</>
-                  )}
-                </button>
+              <div className="space-y-3">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Anomalias e Observações</Label>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {ANOMALY_TYPES.map(type => (
+                    <Badge
+                      key={type}
+                      variant={formData.anomalias_detectadas.includes(type) ? 'default' : 'secondary'}
+                      className="cursor-pointer"
+                      onClick={() => handleAnomalyToggle(type)}
+                    >
+                      {type}
+                    </Badge>
+                  ))}
+                </div>
+                <Textarea 
+                  placeholder="Detalhamento técnico de anomalias ou observações gerais..." 
+                  className="min-h-[100px]"
+                  value={formData.observacoes}
+                  onChange={e => setFormData(p => ({ ...p, observacoes: e.target.value }))}
+                />
               </div>
-            </motion.div>
+
+              <div className="flex items-center justify-between p-4 border border-border rounded-md bg-muted/5">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold uppercase">Manutenção Necessária?</p>
+                  <p className="text-[10px] text-muted-foreground">Sinalizar para intervenção técnica imediata</p>
+                </div>
+                <Checkbox 
+                   checked={formData.requer_manutencao}
+                   onCheckedChange={(checked) => setFormData(p => ({ ...p, requer_manutencao: !!checked }))}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Responsável pela Inspecção</Label>
+                <Select value={formData.inspector_id} onValueChange={val => setFormData(p => ({ ...p, inspector_id: val }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o técnico..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map(u => (
+                      <SelectItem key={u.id} value={u.id.toString()}>{u.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </form>
+          </ScrollArea>
+          <div className="flex gap-3 pt-4 border-t border-border">
+             <Button variant="outline" className="flex-1" onClick={() => setIsNewInspection(false)}>Cancelar</Button>
+             <Button type="submit" form="inspection-form" disabled={submitting} className="flex-1">
+               {submitting ? 'A guardar...' : 'Confirmar Inspecção'}
+             </Button>
           </div>
-        )}
-      </AnimatePresence>
+        </DialogContent>
+      </Dialog>
 
       {/* Inspection Detail Modal */}
-      <AnimatePresence>
-        {selectedInspection && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedInspection(null)}
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.97 }}
-              className="bg-brand-surface w-full max-w-xl shadow-2xl border border-brand-border relative z-10 flex flex-col max-h-[90vh]"
-            >
-              <div className={`p-5 flex items-center justify-between shrink-0 ${selectedInspection.condicao_geral === 'Crítico' || selectedInspection.condicao_geral === 'Degradado'
-                  ? 'bg-red-900/30 border-b border-red-500/20'
-                  : 'bg-emerald-900/20 border-b border-emerald-500/20'
-                }`}>
-                <div>
-                  <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 border ${conditionColor(selectedInspection.condicao_geral)}`}>
-                    {selectedInspection.condicao_geral}
-                  </span>
-                  <p className="text-white font-bold mt-2 text-sm">
-                    {format(new Date(selectedInspection.data_inspecao), "dd MMMM yyyy 'às' HH:mm", { locale: ptBR })}
-                  </p>
-                </div>
-                <button onClick={() => setSelectedInspection(null)} className="p-2 hover:bg-white/10 transition-colors text-gray-400 hover:text-white">
-                  <X size={18} />
-                </button>
+      <Dialog open={!!selectedInspection} onOpenChange={() => setSelectedInspection(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Detalhe da Inspecção</DialogTitle>
+            <DialogDescription>
+              {selectedInspection && format(new Date(selectedInspection.data_inspecao), "dd MMMM yyyy 'às' HH:mm", { locale: ptBR })}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedInspection && (
+            <div className="space-y-6 pt-4">
+              <div className="flex items-center justify-between">
+                <Badge variant={conditionVariant(selectedInspection.condicao_geral) as any}>
+                  CONDIÇÃO: {selectedInspection.condicao_geral}
+                </Badge>
+                {selectedInspection.requer_manutencao && <Badge variant="destructive">MANUTENÇÃO REQUERIDA</Badge>}
               </div>
-              <div className="overflow-y-auto flex-1 p-5 space-y-4">
-                {selectedInspection.anomalias_detectadas && selectedInspection.anomalias_detectadas !== '' && (
-                  <div className="p-4 bg-amber-500/5 border border-amber-500/20">
-                    <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-1">⚠ Anomalias Detectadas</p>
-                    <p className="text-xs text-amber-200">{selectedInspection.anomalias_detectadas}</p>
+
+              <div className="space-y-4 text-sm">
+                {selectedInspection.anomalias_detectadas && (
+                  <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-md">
+                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                       <AlertCircle size={14} /> Anomalias Detectadas
+                    </p>
+                    <p className="text-foreground font-medium">{selectedInspection.anomalias_detectadas}</p>
                     {selectedInspection.descricao_anomalias && (
-                      <p className="text-xs text-gray-400 mt-2">{selectedInspection.descricao_anomalias}</p>
+                       <p className="text-muted-foreground mt-2 text-xs">{selectedInspection.descricao_anomalias}</p>
                     )}
                   </div>
                 )}
-                {selectedInspection.requer_manutencao && (
-                  <div className="p-4 bg-red-500/5 border border-red-500/20 flex items-center gap-3">
-                    <AlertTriangle size={16} className="text-red-400 shrink-0" />
-                    <p className="text-xs text-red-300 font-bold">Este ativo requer intervenção de manutenção</p>
-                  </div>
-                )}
-                {selectedInspection.accoes_imediatas && (
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Acções Imediatas</p>
-                    <p className="text-xs text-gray-300">{selectedInspection.accoes_imediatas}</p>
-                  </div>
-                )}
-                {selectedInspection.componentes_verificados && (() => {
-                  try {
-                    const comps = typeof selectedInspection.componentes_verificados === 'string'
-                      ? JSON.parse(selectedInspection.componentes_verificados)
-                      : selectedInspection.componentes_verificados;
-                    const labels: Record<string, string> = {
-                      estrutura: 'Estrutura', conexoes: 'Conexões', limpeza: 'Limpeza',
-                      seguranca: 'Segurança', funcionamento: 'Funcionamento',
-                    };
-                    return (
-                      <div>
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Componentes Verificados</p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {Object.entries(comps).map(([k, v]) => (
-                            <div key={k} className={`flex items-center gap-2 p-2 border text-[10px] font-bold ${v ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'border-brand-border text-gray-600'}`}>
-                              <CheckCircle2 size={12} /> {labels[k] || k}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  } catch { return null; }
-                })()}
-                {selectedInspection.observacoes && (
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Observações</p>
-                    <p className="text-xs text-gray-300 leading-relaxed">{selectedInspection.observacoes}</p>
-                  </div>
-                )}
+
+                <div>
+                   <Label className="text-[10px] uppercase font-bold text-muted-foreground mb-2 block">Observações do Técnico</Label>
+                   <p className="text-foreground leading-relaxed italic bg-muted/20 p-4 border border-border rounded-md">
+                     "{selectedInspection.observacoes || 'Sem observações escritas.'}"
+                   </p>
+                </div>
               </div>
-              <div className="p-4 border-t border-brand-border shrink-0">
-                <button
-                  onClick={() => setSelectedInspection(null)}
-                  className="w-full py-2.5 border border-brand-border text-gray-400 hover:text-white hover:border-gray-400 transition-colors font-bold text-xs uppercase tracking-widest"
-                >
-                  Fechar
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+
+              <Button variant="outline" className="w-full" onClick={() => setSelectedInspection(null)}>Fechar Detalhe</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-

@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Cpu, MapPin, Calendar, Activity, Search, Filter, MoreVertical, LayoutGrid, List as ListIcon, X, Zap } from 'lucide-react';
+import { Plus, Cpu, MapPin, Calendar, Activity, Search, Filter, MoreVertical, LayoutGrid, List as ListIcon, X, Zap, ArrowUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ASSET_CATEGORIES } from '../constants';
 import DigitalTwin from './DigitalTwin';
 import { canCreateAssets } from '../utils/permissions';
-import { Toast, ToastType } from './ui/Toast';
+
+// --- shadcn UI imports ---
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Badge } from './ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Label } from './ui/label';
+import { Checkbox } from './ui/checkbox';
+import { Separator } from './ui/separator';
 
 export default function Assets({ 
   propertyId, 
@@ -24,13 +35,15 @@ export default function Assets({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [submitting, setSubmitting] = useState(false);
   const [dynamicCategories, setDynamicCategories] = useState<string[]>(ASSET_CATEGORIES);
-  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [search, setSearch] = useState('');
+  
   const [user] = useState<any>(() => {
     try {
       const u = localStorage.getItem('user');
       return u && u !== 'undefined' ? JSON.parse(u) : {};
     } catch { return {}; }
   });
+  
   const [formData, setFormData] = useState({
     nome: '',
     categoria: ASSET_CATEGORIES[0],
@@ -66,10 +79,6 @@ export default function Assets({
     setSelectedAsset(null);
     if (onClearAsset) onClearAsset();
   };
-
-  const filteredAssets = propertyId
-    ? assets.filter(a => String(a.property_id) === String(propertyId))
-    : assets;
 
   const fetchAssets = async () => {
     try {
@@ -107,7 +116,6 @@ export default function Assets({
         const catSetting = settings.find((s: any) => s.setting_key === 'asset_categories');
         if (catSetting && Array.isArray(catSetting.setting_value)) {
           setDynamicCategories(catSetting.setting_value);
-          // Only set initial category if we don't have one and we found categories
           setFormData(prev => ({ 
             ...prev, 
             categoria: prev.categoria || catSetting.setting_value[0] || ASSET_CATEGORIES[0] 
@@ -132,7 +140,6 @@ export default function Assets({
         body: JSON.stringify(formData)
       });
       if (res.ok) {
-        setToast({ message: 'Ativo adicionado com sucesso!', type: 'success' });
         setIsModalOpen(false);
         fetchAssets();
         setFormData({ 
@@ -149,324 +156,279 @@ export default function Assets({
         });
       } else {
         const errorData = await res.json();
-        setToast({ message: errorData.error || 'Erro ao adicionar ativo', type: 'error' });
+        console.error(errorData.error || 'Erro ao adicionar ativo');
       }
     } catch (err) {
       console.error(err);
-      setToast({ message: 'Erro de rede ao tentar adicionar o ativo', type: 'error' });
     } finally {
       setSubmitting(false);
     }
   };
+
+  const filteredAssets = (propertyId
+    ? assets.filter(a => String(a.property_id) === String(propertyId))
+    : assets).filter(a => 
+      !search || 
+      a.nome?.toLowerCase().includes(search.toLowerCase()) || 
+      a.categoria?.toLowerCase().includes(search.toLowerCase())
+    );
 
   if (selectedAsset) {
     return <DigitalTwin asset={selectedAsset} onBack={handleBack} />;
   }
 
   return (
-    <div className="space-y-6 page-enter">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* Header - Industrial Minimalism */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
         <div className="flex items-center gap-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-3.5 h-3.5" />
-            <input
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-3.5 h-3.5" />
+            <Input
               type="text"
-              placeholder="Consultar ativos..."
-              className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64 text-xs"
+              placeholder="Pesquisar ativos..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 w-64 h-9 text-xs bg-muted/20 border-border"
             />
           </div>
           {propertyId && (
-            <button
-              onClick={onClearFilter}
-              className="px-3 py-1.5 bg-emerald-500/10 text-emerald-500 rounded-none border border-emerald-500/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-500/20 transition-all"
-            >
+            <Badge variant="secondary" className="h-9 px-3 gap-2 bg-primary/10 text-primary border-primary/20 cursor-pointer" onClick={onClearFilter}>
               Filtro Ativo <X size={12} />
-            </button>
+            </Badge>
           )}
-          <div className="flex bg-brand-surface p-1 rounded-none border border-brand-border">
-            <button
+          <div className="flex bg-muted/20 p-1 border border-border rounded-md">
+            <Button
+              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+              size="icon"
               onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-none transition-all ${viewMode === 'grid' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-500 hover:text-gray-300'}`}
+              className="h-7 w-7"
             >
-              <LayoutGrid size={14} />
-            </button>
-            <button
+              <LayoutGrid size={13} />
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              size="icon"
               onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded-none transition-all ${viewMode === 'list' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-500 hover:text-gray-300'}`}
+              className="h-7 w-7"
             >
-              <ListIcon size={14} />
-            </button>
+              <ListIcon size={13} />
+            </Button>
           </div>
         </div>
         {canCreateAssets(user.perfil) && (
-          <button
+          <Button
             onClick={() => setIsModalOpen(true)}
-            className="bg-emerald-500 text-white px-6 py-2 rounded-none font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 text-xs"
+            className="h-9 gap-2 text-xs font-bold"
           >
             <Plus size={16} />
             Inicializar Ativo
-          </button>
+          </Button>
         )}
       </div>
 
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredAssets.map((asset) => (
-            <motion.div
-              layout
+            <Card 
               key={asset.id}
               onClick={() => setSelectedAsset(asset)}
-              className="bg-brand-surface rounded-none border border-brand-border hover:border-emerald-500/30 transition-all group cursor-pointer overflow-hidden p-5"
+              className="shadow-none border-border hover:border-zinc-400 dark:hover:border-zinc-600 transition-all cursor-pointer group rounded-none"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-2.5 bg-white/5 rounded-none text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all">
-                  <Cpu size={18} />
-                </div>
-                <div className={`px-2 py-0.5 rounded-none text-[9px] font-bold uppercase tracking-wider ${asset.probabilidade_falha === 'Alta' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                  asset.probabilidade_falha === 'Média' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
-                    'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                  }`}>
-                  Risco {asset.probabilidade_falha}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-white text-sm tracking-tight group-hover:text-emerald-500 transition-colors truncate">{asset.nome}</h3>
-                    {asset.obsoleto && (
-                      <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-gray-500/10 text-gray-400 border border-gray-500/20">
-                        Obsoleto
-                      </span>
-                    )}
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="w-10 h-10 rounded bg-muted flex items-center justify-center text-muted-foreground border border-border">
+                    <Cpu size={18} />
                   </div>
-                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">{asset.categoria}</p>
+                  <Badge variant={asset.probabilidade_falha === 'Alta' ? 'destructive' : 'outline'} className="text-[9px] px-1.5 py-0 h-4 uppercase">
+                    {asset.probabilidade_falha}
+                  </Badge>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                    <MapPin size={12} className="text-gray-600" />
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-sm tracking-tight truncate leading-none mb-1 group-hover:text-primary transition-colors">
+                      {asset.nome}
+                    </h3>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                    {asset.categoria}
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <MapPin size={11} className="text-muted-foreground/50" />
                     <span className="truncate">{asset.property_name}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                    <Calendar size={12} className="text-gray-600" />
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <Calendar size={11} className="text-muted-foreground/50" />
                     <span>Instalado: {asset.data_instalacao}</span>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-brand-border flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Activity size={12} className="text-emerald-500" />
-                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Ver Inspecções</span>
+                <div className="pt-3 border-t border-border flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                    <Activity size={12} className="text-muted-foreground" />
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Ver Digital Twin</span>
                   </div>
-                  <Zap size={12} className="text-gray-600" />
+                  {asset.obsoleto && <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-zinc-200 dark:bg-zinc-800">OBSOLETO</Badge>}
                 </div>
-              </div>
-            </motion.div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       ) : (
-        <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white/[0.02]">
-                <th className="col-header">Ativo</th>
-                <th className="col-header">Categoria</th>
-                <th className="col-header">Propriedade</th>
-                <th className="col-header">Saúde</th>
-                <th className="col-header">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-brand-border">
+        <Card className="shadow-none border-border overflow-hidden rounded-none">
+          <Table>
+            <TableHeader className="bg-muted/30">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="text-[10px] uppercase font-bold h-10">Ativo</TableHead>
+                <TableHead className="text-[10px] uppercase font-bold h-10">Categoria</TableHead>
+                <TableHead className="text-[10px] uppercase font-bold h-10">Propriedade</TableHead>
+                <TableHead className="text-[10px] uppercase font-bold h-10">Risco</TableHead>
+                <TableHead className="text-[10px] uppercase font-bold h-10 text-right">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filteredAssets.map((asset) => (
-                <tr
-                  key={asset.id}
-                  className="data-row"
+                <TableRow 
+                  key={asset.id} 
+                  className="cursor-pointer group h-12"
                   onClick={() => setSelectedAsset(asset)}
                 >
-                  <td className="px-4 py-3">
+                  <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-none bg-white/5 flex items-center justify-center text-emerald-500 border border-white/5">
+                      <div className="w-8 h-8 rounded bg-muted flex items-center justify-center text-muted-foreground border border-border group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
                         <Cpu size={14} />
                       </div>
-                      <div className="flex flex-col">
-                        <span className="font-bold text-white text-xs">{asset.nome}</span>
-                        {asset.obsoleto && (
-                          <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mt-0.5 max-w-max px-1.5 py-0.5 rounded bg-gray-500/10">Obsoleto</span>
-                        )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-xs truncate">{asset.nome}</span>
+                        {asset.obsoleto && <span className="text-[8px] text-destructive font-bold uppercase tracking-tighter">Obsoleto</span>}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{asset.categoria}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs text-gray-300">{asset.property_name}</span>
-                  </td>
-                  <td className="px-4 py-3">
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{asset.categoria}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-muted-foreground">{asset.property_name}</span>
+                  </TableCell>
+                  <TableCell>
                     <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-none ${asset.probabilidade_falha === 'Alta' ? 'bg-red-500' :
-                        asset.probabilidade_falha === 'Média' ? 'bg-amber-500' : 'bg-emerald-500'
-                        }`}></div>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{asset.probabilidade_falha}</span>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        asset.probabilidade_falha === 'Alta' ? 'bg-destructive' :
+                        asset.probabilidade_falha === 'Média' ? 'bg-amber-500' : 'bg-primary'
+                      }`}></div>
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase">{asset.probabilidade_falha}</span>
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button className="p-1.5 hover:bg-white/5 rounded-none text-gray-500 transition-colors">
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
                       <MoreVertical size={14} />
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       )}
 
       {/* Modal Novo Ativo */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-brand-surface w-full max-w-2xl shadow-2xl border border-brand-border relative z-10 flex flex-col max-h-[90vh]"
-            >
-              <div className="p-6 bg-emerald-500 text-white flex items-center justify-between shrink-0">
-                <div>
-                  <h2 className="text-lg font-bold tracking-tight">Registar Ativo</h2>
-                  <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-widest mt-0.5">Novo Equipamento ou Instalação</p>
-                </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 rounded-none transition-colors">
-                  <X size={20} />
-                </button>
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Inicializar Ativo</DialogTitle>
+            <DialogDescription>Registar novo equipamento ou componente técnico no sistema.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Nome do Ativo</Label>
+                <Input
+                  required
+                  value={formData.nome}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                  placeholder="ex: Gerador Caterpillar 500kVA"
+                />
               </div>
-              <form id="asset-form" onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Nome do Ativo</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.nome}
-                      onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                      placeholder="ex: Ar Condicionado GREE"
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Categoria</label>
-                    <select
-                      value={formData.categoria}
-                      onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                    >
-                      {dynamicCategories.map(c => <option key={c} value={c} className="bg-brand-surface">{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Propriedade *</label>
-                    <select
-                      required
-                      value={formData.property_id}
-                      onChange={(e) => setFormData({ ...formData, property_id: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                    >
-                      <option value="" className="bg-brand-surface">Selecionar Propriedade...</option>
-                      {properties.map(p => <option key={p.id} value={p.id} className="bg-brand-surface">{p.endereco}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Data de Instalação</label>
-                    <input
-                      type="date"
-                      value={formData.data_instalacao}
-                      onChange={(e) => setFormData({ ...formData, data_instalacao: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                    />
-                  </div>
-                </div>
-                
-                {/* Hierarquia e Ciclo de Vida */}
-                <div className="pt-6 border-t border-brand-border">
-                  <h3 className="text-sm font-bold text-white tracking-tight mb-4">Hierarquia e Ciclo de Vida</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Ativo Pai (Hierarquia)</label>
-                      <select
-                        value={formData.parent_id}
-                        onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                      >
-                        <option value="" className="bg-brand-surface">Nenhum (Ativo Principal)</option>
-                        {assets.map(a => <option key={a.id} value={a.id} className="bg-brand-surface">{a.nome} ({a.categoria})</option>)}
-                      </select>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <div className="flex items-center space-x-3 pt-6">
-                        <div className="relative flex items-center">
-                          <input
-                            type="checkbox"
-                            className="peer h-5 w-5 cursor-pointer appearance-none rounded-none border border-brand-border bg-white/5 checked:border-emerald-500 checked:bg-emerald-500 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                            checked={formData.obsoleto}
-                            onChange={(e) => setFormData({ ...formData, obsoleto: e.target.checked })}
-                          />
-                          <svg className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none opacity-0 peer-checked:opacity-100 text-white transition-opacity" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <label className="text-xs font-bold text-gray-300">Marcar como Obsoleto</label>
-                      </div>
-                      
-                      {formData.obsoleto && (
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Data de Obsolescência</label>
-                          <input
-                            required
-                            type="date"
-                            value={formData.data_obsolescencia}
-                            onChange={(e) => setFormData({ ...formData, data_obsolescencia: e.target.value })}
-                            className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </form>
-              <div className="p-6 border-t border-brand-border shrink-0 bg-brand-surface">
-                <button
-                  type="submit"
-                  form="asset-form"
-                  disabled={submitting}
-                  className="w-full py-3 bg-emerald-500 text-white rounded-none font-bold hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Categoria</Label>
+                <Select 
+                  value={formData.categoria} 
+                  onValueChange={(val) => setFormData({ ...formData, categoria: val })}
                 >
-                  {submitting ? (
-                    <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin"></div> A processar...</>
-                  ) : 'Confirmar Registo'}
-                </button>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dynamicCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Propriedade Vinculada</Label>
+                <Select 
+                  value={formData.property_id} 
+                  onValueChange={(val) => setFormData({ ...formData, property_id: val })}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Vincular a unidade..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {properties.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.endereco}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data de Instalação</Label>
+                <Input
+                  type="date"
+                  value={formData.data_instalacao}
+                  onChange={(e) => setFormData({ ...formData, data_instalacao: e.target.value })}
+                />
+              </div>
+            </div>
+            
+            <Separator />
 
-      <Toast 
-        message={toast?.message || null} 
-        type={toast?.type} 
-        onClose={() => setToast(null)} 
-      />
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Ciclo de Vida e Obsolescência</h3>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="obsoleto" 
+                  checked={formData.obsoleto}
+                  onCheckedChange={(checked) => setFormData({ ...formData, obsoleto: !!checked })}
+                />
+                <label htmlFor="obsoleto" className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Marcar como equipamento obsoleto
+                </label>
+              </div>
+              
+              {formData.obsoleto && (
+                <div className="space-y-2 max-w-xs animate-in fade-in slide-in-from-top-1">
+                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data de Obsolescência</Label>
+                  <Input
+                    required
+                    type="date"
+                    value={formData.data_obsolescencia}
+                    onChange={(e) => setFormData({ ...formData, data_obsolescencia: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="flex-1">
+                {submitting ? 'A processar...' : 'Confirmar Registo'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
-

@@ -1,14 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, ArrowUpRight, AlertCircle, Clock, CheckCircle2, X as XIcon, Activity, ChevronDown, Trash2, Download, Calendar as CalendarIcon, LayoutGrid, List, User as UserIcon, AlertTriangle } from 'lucide-react';
+import { 
+  Plus, Search, Filter, AlertCircle, Clock, CheckCircle2, 
+  X as XIcon, Activity, ChevronDown, Trash2, Download, 
+  Calendar as CalendarIcon, User as UserIcon, AlertTriangle, 
+  MoreVertical, FileSpreadsheet, ArrowUpRight, ArrowDown
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CATEGORIES, SEVERITIES } from '../constants';
 import { canReportIncidents } from '../utils/permissions';
-import { Toast, ToastType } from './ui/Toast';
 import socket from '../services/socketService';
 
-// Safe date formatter - never crashes on invalid dates
+// --- shadcn UI imports ---
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Badge } from './ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Label } from './ui/label';
+import { Textarea } from './ui/textarea';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from './ui/dropdown-menu';
+import { Separator } from './ui/separator';
+
 const safeFormat = (dateStr: string | null | undefined, fmt: string) => {
   if (!dateStr) return '—';
   try {
@@ -16,6 +32,26 @@ const safeFormat = (dateStr: string | null | undefined, fmt: string) => {
     if (!isValid(d)) return '—';
     return format(d, fmt, { locale: ptBR });
   } catch { return '—'; }
+};
+
+const getStatusVariant = (status: string) => {
+  switch (status?.toLowerCase()) {
+    case 'novo': return 'destructive';
+    case 'em progresso': return 'warning';
+    case 'concluido': return 'success';
+    case 'pendente': return 'secondary';
+    default: return 'outline';
+  }
+};
+
+const getSeverityVariant = (severity: string) => {
+  switch (severity?.toLowerCase()) {
+    case 'crítico': return 'destructive';
+    case 'alto': return 'destructive';
+    case 'médio': return 'warning';
+    case 'baixo': return 'outline';
+    default: return 'outline';
+  }
 };
 
 export default function Incidents({ onSelectIncident }: { onSelectIncident: (id: string) => void }) {
@@ -27,12 +63,10 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
-  const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
-  const [filterStatus, setFilterStatus] = useState('');
-  const [quickFilter, setQuickFilter] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(() => {
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterSeverity, setFilterSeverity] = useState<string>('all');
+  
+  const [currentUser] = useState<any>(() => {
     try {
       const u = localStorage.getItem('user');
       return u && u !== 'undefined' ? JSON.parse(u) : {};
@@ -42,16 +76,12 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
 
   const [formData, setFormData] = useState({
     property_id: '',
-    asset_id: '',
+    asset_id: 'none',
     categoria: CATEGORIES[0],
     descricao: '',
     severidade: 'Médio',
-    responsavel_id: ''
+    responsavel_id: 'none'
   });
-
-  const showToast = (msg: string, type: ToastType = 'success') => {
-    setToast({ msg, type });
-  };
 
   useEffect(() => { fetchData(); }, []);
 
@@ -84,7 +114,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
         setFormData(prev => ({ ...prev, categoria: incidentSetting.setting_value[0] }));
       }
     } catch (err) {
-      showToast('Erro ao carregar incidentes.', 'error');
+      console.error(err);
       setIncidents([]);
     } finally {
       setLoading(false);
@@ -92,491 +122,347 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
   };
 
   useEffect(() => {
-    socket.on("incident-update", () => {
-      fetchData();
-    });
-    return () => {
-      socket.off("incident-update");
-    };
+    socket.on("incident-update", () => { fetchData(); });
+    return () => { socket.off("incident-update"); };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.property_id) {
-      showToast('Selecione uma Propriedade.', 'error');
-      return;
-    }
-    if (!formData.descricao.trim()) {
-      showToast('Preencha a descrição do incidente.', 'error');
-      return;
-    }
+    if (!formData.property_id || formData.property_id === 'none') return;
     setSubmitting(true);
     try {
+      const submitData = {
+        ...formData,
+        asset_id: formData.asset_id === 'none' ? null : formData.asset_id,
+        responsavel_id: formData.responsavel_id === 'none' ? null : formData.responsavel_id
+      };
       const res = await fetch('/api/incidents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(submitData)
       });
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
-        setFormData({ property_id: '', asset_id: '', categoria: incidentCategories[0] || CATEGORIES[0], descricao: '', severidade: 'Médio', responsavel_id: '' });
-        showToast('Incidente reportado com sucesso!', 'success');
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Erro ao reportar incidente', 'error');
+        setFormData({ property_id: '', asset_id: 'none', categoria: incidentCategories[0] || CATEGORIES[0], descricao: '', severidade: 'Médio', responsavel_id: 'none' });
       }
-    } catch {
-      showToast('Erro de rede. Tente novamente.', 'error');
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleBatchUpdate = async (updates: any) => {
-    if (selectedIds.length === 0) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/incidents/batch', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ ids: selectedIds, updates })
-      });
-      if (res.ok) {
-        showToast(`${selectedIds.length} incidentes atualizados.`, 'success');
-        setSelectedIds([]);
-        fetchData();
-      }
-    } catch {
-      showToast('Erro ao atualizar em massa.', 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === filtered.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(filtered.map(i => i.id));
-    }
-  };
-
-  const toggleSelect = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const handleExport = () => {
-    if (filtered.length === 0) return;
-
-    const headers = ['Protocolo', 'Categoria', 'Descricao', 'Propriedade', 'Severidade', 'Estado', 'Responsavel', 'Data'];
-    const rows = filtered.map(i => [
-      `#${i.id?.toString().slice(-4).toUpperCase()}`,
-      i.categoria,
-      i.descricao.replace(/,/g, ';'), // simple csv escape
-      i.property_name,
-      i.severidade,
-      i.estado,
-      i.responsavel_nome || 'Não Atribuído',
-      safeFormat(i.created_at, 'yyyy-MM-dd HH:mm')
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(r => r.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `incidentes_nexo_${format(new Date(), 'yyyyMMdd')}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('✅ Exportação concluída!');
-  };
-
-  const CalendarView = () => {
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay();
-    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-    const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
-
-    const getIncidentsForDay = (day: number) => {
-      const dateStr = format(new Date(new Date().getFullYear(), new Date().getMonth(), day), 'yyyy-MM-dd');
-      return filtered.filter(i => i.created_at?.startsWith(dateStr));
-    };
-
-    return (
-      <div className="bg-brand-surface border border-brand-border p-4">
-        <div className="grid grid-cols-7 gap-px bg-brand-border border border-brand-border">
-          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
-            <div key={d} className="bg-white/[0.02] p-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest">{d}</div>
-          ))}
-          {blanks.map(b => <div key={`b-${b}`} className="bg-brand-surface h-32 opacity-20" />)}
-          {days.map(d => (
-            <div key={d} className="bg-brand-surface h-32 p-2 border-t border-brand-border relative overflow-hidden group hover:bg-white/[0.01] transition-all">
-              <span className="text-[10px] font-bold text-gray-600 group-hover:text-emerald-500 transition-colors">{d}</span>
-              <div className="mt-1 space-y-1">
-                {getIncidentsForDay(d).slice(0, 3).map(i => (
-                  <div key={i.id} onClick={() => onSelectIncident(i.id)} className="px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-bold text-emerald-400 truncate cursor-pointer hover:bg-emerald-500 hover:text-white transition-all">
-                    {i.categoria}
-                  </div>
-                ))}
-                {getIncidentsForDay(d).length > 3 && <p className="text-[8px] text-gray-500 text-center font-bold">+{getIncidentsForDay(d).length - 3} mais</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const severityConfig: Record<string, string> = {
-    'Crítico': 'bg-red-500/10 text-red-400 border-red-500/20',
-    'Alto': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    'Médio': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    'Baixo': 'bg-gray-500/10 text-gray-400 border-gray-500/20',
-  };
-
-  const statusDot: Record<string, string> = {
-    'Resolvido': 'bg-emerald-500', 'Fechado': 'bg-teal-500',
-    'Aberto': 'bg-blue-500', 'Em progresso': 'bg-amber-500',
   };
 
   const filtered = incidents.filter(i => {
-    const matchSearch = !search || i.categoria?.toLowerCase().includes(search.toLowerCase())
-      || i.property_name?.toLowerCase().includes(search.toLowerCase())
-      || i.descricao?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = !filterStatus || i.estado === filterStatus;
-
-    if (quickFilter === 'high') return matchSearch && matchStatus && i.severidade === 'Crítico';
-    if (quickFilter === 'mine') return matchSearch && matchStatus && i.responsavel_id === (currentUser?.id || '');
-    if (quickFilter === 'overdue') {
-      const isOverdue = new Date(i.sla_resposta_limite) < new Date() && i.estado === 'Aberto';
-      return matchSearch && matchStatus && isOverdue;
-    }
-
-    return matchSearch && matchStatus;
+    const matchesSearch = !search || 
+      i.descricao?.toLowerCase().includes(search.toLowerCase()) || 
+      i.id?.toString().includes(search) ||
+      i.property_name?.toLowerCase().includes(search.toLowerCase());
+    
+    const matchesStatus = filterStatus === 'all' || i.estado?.toLowerCase() === filterStatus.toLowerCase();
+    const matchesSeverity = filterSeverity === 'all' || i.severidade?.toLowerCase() === filterSeverity.toLowerCase();
+    
+    return matchesSearch && matchesStatus && matchesSeverity;
   });
+
+  const handleExport = () => {
+    const csvHeaders = ['Protocolo', 'Data', 'Status', 'Severidade', 'Categoria', 'Unidade', 'Responsavel'];
+    const csvRows = filtered.map(i => [
+      `#${i.id}`,
+      safeFormat(i.created_at, 'yyyy-MM-dd'),
+      i.estado,
+      i.severidade,
+      i.categoria,
+      i.property_name,
+      i.responsavel_nome || 'Livre'
+    ].join(','));
+    const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `incidentes_${format(new Date(), 'yyyyMMdd')}.csv`);
+    link.click();
+  };
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div>
-      <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar Incidentes...</p>
+      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar registos...</p>
     </div>
   );
 
   return (
-    <div className="space-y-5 page-enter">
-      {/* Modern Premium Toast */}
-      <Toast
-        message={toast?.msg || null}
-        type={toast?.type}
-        onClose={() => setToast(null)}
-      />
-
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-wrap">
+    <div className="space-y-6">
+      {/* Search and Filters Header */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-3.5 h-3.5" />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-3.5 h-3.5" />
+            <Input
               placeholder="Pesquisar incidentes..."
-              className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-52 text-xs" />
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 w-64 h-9 text-xs bg-muted/20 border-border"
+            />
           </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-            className="px-3 py-2 bg-brand-surface border border-brand-border text-xs text-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
-            <option value="">Todos os estados</option>
-            <option value="Aberto">Aberto</option>
-            <option value="Em progresso">Em progresso</option>
-            <option value="Resolvido">Resolvido</option>
-            <option value="Fechado">Fechado</option>
-          </select>
-          <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/5">
-            <AlertCircle size={12} className="text-emerald-500" />
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{filtered.length} incidentes</span>
-          </div>
-          <button onClick={handleExport} className="p-2 bg-brand-surface border border-brand-border text-gray-400 hover:text-emerald-500 transition-all" title="Exportar CSV">
+          
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-40 h-9 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos Status</SelectItem>
+              <SelectItem value="Novo">Novo</SelectItem>
+              <SelectItem value="Em Progresso">Em Progresso</SelectItem>
+              <SelectItem value="Pendente">Pendente</SelectItem>
+              <SelectItem value="Concluido">Concluido</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filterSeverity} onValueChange={setFilterSeverity}>
+            <SelectTrigger className="w-40 h-9 text-xs">
+              <SelectValue placeholder="Severidade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas Severidades</SelectItem>
+              <SelectItem value="Crítico">Crítico</SelectItem>
+              <SelectItem value="Alto">Alto</SelectItem>
+              <SelectItem value="Médio">Médio</SelectItem>
+              <SelectItem value="Baixo">Baixo</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => { setSearch(''); setFilterStatus('all'); setFilterSeverity('all'); }}>
+             <XIcon size={14} className="text-muted-foreground" />
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9 gap-2 text-xs" onClick={handleExport}>
             <Download size={14} />
-          </button>
-          <div className="flex bg-brand-surface border border-brand-border p-1">
-            <button onClick={() => setViewMode('list')} className={`p-1 transition-all ${viewMode === 'list' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-500 hover:text-white'}`}>
-              <List size={14} />
-            </button>
-            <button onClick={() => setViewMode('calendar')} className={`p-1 transition-all ${viewMode === 'calendar' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-500 hover:text-white'}`}>
-              <CalendarIcon size={14} />
-            </button>
-          </div>
+            Exportar CSV
+          </Button>
+          {canReportIncidents(currentUser.perfil) && (
+            <Button size="sm" className="h-9 gap-2 text-xs font-bold" onClick={() => setIsModalOpen(true)}>
+              <Plus size={16} />
+              Reportar Incidente
+            </Button>
+          )}
         </div>
-        {canReportIncidents(currentUser.perfil) && (
-          <button onClick={() => setIsModalOpen(true)}
-            className="bg-emerald-500 text-white px-6 py-2 rounded-none font-bold hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 text-xs shrink-0">
-            <Plus size={16} /> Reportar Incidente
-          </button>
-        )}
       </div>
 
-      {/* Quick Filters */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
-        <button onClick={() => setQuickFilter('')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all ${!quickFilter ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
-          Todos
-        </button>
-        <button onClick={() => setQuickFilter('high')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${quickFilter === 'high' ? 'bg-red-500 text-white border-red-500' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
-          <AlertTriangle size={12} /> Alta Prioridade
-        </button>
-        <button onClick={() => setQuickFilter('mine')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${quickFilter === 'mine' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
-          <UserIcon size={12} /> Meus Protocolos
-        </button>
-        <button onClick={() => setQuickFilter('overdue')} className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${quickFilter === 'overdue' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}>
-          <Clock size={12} /> Atrasados
-        </button>
+      {/* Stats Quick View */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Registos', value: incidents.length, icon: Activity, color: 'text-foreground' },
+          { label: 'Em Aberto', value: incidents.filter(i => i.estado === 'Novo' || i.estado === 'Novo').length, icon: AlertCircle, color: 'text-destructive' },
+          { label: 'Em Resolução', value: incidents.filter(i => i.estado === 'Em Progresso').length, icon: Clock, color: 'text-warning' },
+          { label: 'Concluídos', value: incidents.filter(i => i.estado === 'Concluido').length, icon: CheckCircle2, color: 'text-success' },
+        ].map((s, i) => (
+          <Card key={i} className="shadow-none border-border">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{s.label}</p>
+                <p className={`text-xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+              </div>
+              <s.icon size={20} className="text-muted-foreground/30" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      <AnimatePresence>
-        {selectedIds.length > 0 && (
-          <motion.div
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 50, opacity: 0 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[150] bg-brand-surface border border-emerald-500/30 px-6 py-3 shadow-2xl flex items-center gap-6"
-          >
-            <div className="flex items-center gap-3 pr-6 border-r border-brand-border">
-              <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">{selectedIds.length} Selecionados</span>
-              <button onClick={() => setSelectedIds([])} className="text-gray-500 hover:text-white transition-colors"><XIcon size={14} /></button>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="group relative">
-                <button className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-white transition-all">
-                  Alterar Estado <ChevronDown size={12} />
-                </button>
-                <div className="absolute bottom-full left-0 mb-2 w-40 bg-brand-surface border border-brand-border shadow-2xl hidden group-hover:block">
-                  {['Aberto', 'Em progresso', 'Resolvido', 'Fechado'].map(s => (
-                    <button key={s} onClick={() => handleBatchUpdate({ estado: s })} className="w-full text-left px-4 py-2 text-[10px] text-gray-400 hover:bg-emerald-500 hover:text-white transition-all uppercase tracking-widest font-bold border-b border-brand-border last:border-0">{s}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="group relative">
-                <button className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-white transition-all">
-                  Severidade <ChevronDown size={12} />
-                </button>
-                <div className="absolute bottom-full left-0 mb-2 w-40 bg-brand-surface border border-brand-border shadow-2xl hidden group-hover:block">
-                  {SEVERITIES.map(s => (
-                    <button key={s} onClick={() => handleBatchUpdate({ severidade: s })} className="w-full text-left px-4 py-2 text-[10px] text-gray-400 hover:bg-emerald-500 hover:text-white transition-all uppercase tracking-widest font-bold border-b border-brand-border last:border-0">{s}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {viewMode === 'calendar' ? <CalendarView /> : (
-        <div className="bg-brand-surface rounded-none border border-brand-border overflow-hidden">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white/[0.02]">
-                <th className="px-4 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.length === filtered.length && filtered.length > 0}
-                    onChange={toggleSelectAll}
-                    className="accent-emerald-500"
-                  />
-                </th>
-                <th className="col-header">Protocolo</th>
-                <th className="col-header">Localização</th>
-                <th className="col-header">Severidade</th>
-                <th className="col-header">Estado</th>
-                <th className="col-header">Responsável</th>
-                <th className="col-header">Data</th>
-                <th className="col-header">Ver</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-brand-border">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
-                    <AlertCircle size={32} className="text-gray-600 mx-auto mb-3" />
-                    <p className="text-sm font-bold text-gray-500">
-                      {search || filterStatus ? 'Nenhum incidente encontrado' : 'Nenhum incidente registado'}
-                    </p>
-                    {!search && !filterStatus && canReportIncidents(currentUser.perfil) && (
-                      <button onClick={() => setIsModalOpen(true)}
-                        className="mt-3 px-4 py-2 bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-all">
-                        + Reportar primeiro incidente
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ) : filtered.map((incident) => (
-                <tr key={incident.id} className={`data-row cursor-pointer transition-all ${selectedIds.includes(incident.id) ? 'bg-emerald-500/5' : ''}`} onClick={() => onSelectIncident(incident.id)}>
-                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(incident.id)}
-                      onChange={e => setSelectedIds(prev => prev.includes(incident.id) ? prev.filter(x => x !== incident.id) : [...prev, incident.id])}
-                      className="accent-emerald-500"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-white/5 flex items-center justify-center text-[9px] font-mono font-bold text-emerald-500 border border-white/5 shrink-0">
-                        #{incident.id?.toString().slice(-4).toUpperCase() || '0000'}
-                      </div>
-                      <div>
-                        <p className="font-bold text-white text-xs">{incident.categoria}</p>
-                        <p className="text-[9px] text-gray-600 truncate max-w-[120px]">{incident.descricao}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-xs text-gray-300 truncate max-w-[140px]">{incident.property_name || '—'}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${severityConfig[incident.severidade] || severityConfig['Baixo']}`}>
-                      {incident.severidade}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-none ${statusDot[incident.estado] || 'bg-gray-500'}`}></div>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{incident.estado}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs text-gray-400">{incident.responsavel_nome || 'Não Atribuído'}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-[10px] font-mono text-gray-500">{safeFormat(incident.created_at, 'dd/MM HH:mm')}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button className="p-1.5 hover:bg-white/5 text-gray-500 hover:text-emerald-400 transition-colors">
-                      <ArrowUpRight size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* ─── Report Incident Modal ─── */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-[100] overflow-y-auto">
-            <div className="flex min-h-full items-start justify-center p-4 pt-8">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                onClick={() => setIsModalOpen(false)} className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="bg-brand-surface w-full max-w-2xl shadow-2xl border border-brand-border relative z-10"
+      {/* Main Table */}
+      <Card className="shadow-none border-border overflow-hidden">
+        <Table>
+          <TableHeader className="bg-muted/30">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-24 text-[10px] uppercase font-bold h-10">ID</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10">Data</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10">Status</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10">Severidade</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10">Descrição & Unidade</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10">Responsável</TableHead>
+              <TableHead className="w-12 text-right h-10"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((incident) => (
+              <TableRow 
+                key={incident.id} 
+                className="cursor-pointer group h-14"
+                onClick={() => onSelectIncident(incident.id)}
               >
-                {/* Modal Header */}
-                <div className="p-6 bg-emerald-500 text-white flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-bold tracking-tight">Reportar Incidente</h2>
-                    <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-widest mt-0.5">Protocolo de Falha Operacional</p>
+                <TableCell className="font-mono text-[10px] text-muted-foreground">
+                  #{incident.id?.toString().slice(-6).toUpperCase()}
+                </TableCell>
+                <TableCell className="text-xs whitespace-nowrap">
+                  {safeFormat(incident.created_at, 'dd MMM, HH:mm')}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={getStatusVariant(incident.estado) as any} className="text-[9px] h-4 uppercase font-bold">
+                    {incident.estado}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={getSeverityVariant(incident.severidade) as any} className="text-[9px] h-4 uppercase font-bold">
+                    {incident.severidade}
+                  </Badge>
+                </TableCell>
+                <TableCell className="min-w-[250px]">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold truncate group-hover:text-primary transition-colors">
+                      {incident.descricao}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-1 mt-0.5">
+                      <Activity size={10} /> {incident.property_name}
+                    </span>
                   </div>
-                  <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 transition-colors"><XIcon size={20} /></button>
-                </div>
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Propriedade *</label>
-                      <select required value={formData.property_id} onChange={e => setFormData({ ...formData, property_id: e.target.value, asset_id: '' })}
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white">
-                        <option value="" className="bg-brand-surface">Selecionar Propriedade</option>
-                        {properties.map(p => <option key={p.id} value={p.id} className="bg-brand-surface">{p.endereco}</option>)}
-                      </select>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden shrink-0">
+                      {incident.responsavel_nome ? <UserIcon size={10} className="text-muted-foreground" /> : <Clock size={10} className="text-muted-foreground/30" />}
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Ativo (Opcional)</label>
-                      <select value={formData.asset_id} onChange={e => setFormData({ ...formData, asset_id: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white">
-                        <option value="" className="bg-brand-surface">Selecionar Ativo</option>
-                        {assets.filter(a => !formData.property_id || a.property_id === formData.property_id).map(a => (
-                          <option key={a.id} value={a.id} className="bg-brand-surface">{a.nome}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                      {incident.responsavel_nome || 'Livre'}
+                    </span>
                   </div>
+                </TableCell>
+                <TableCell className="text-right">
+                   <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
+                        <MoreVertical size={14} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48 text-xs">
+                      <DropdownMenuLabel>Ações Rápidas</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onSelectIncident(incident.id)}>
+                        <ArrowUpRight size={14} className="mr-2" /> Ver Detalhes
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <UserIcon size={14} className="mr-2" /> Atribuir Técnico
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive">
+                        <Trash2 size={14} className="mr-2" /> Eliminar Registo
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+            {filtered.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="h-64 text-center">
+                  <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
+                    <Activity size={32} className="opacity-10" />
+                    <p className="text-xs font-medium uppercase tracking-widest">Nenhum incidente encontrado</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Card>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Categoria</label>
-                      <select value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white">
-                        {incidentCategories.map(c => <option key={c} value={c} className="bg-brand-surface">{c}</option>)}
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Severidade</label>
-                      <select value={formData.severidade} onChange={e => setFormData({ ...formData, severidade: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white">
-                        {SEVERITIES.map(s => <option key={s} value={s} className="bg-brand-surface">{s}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Descrição *</label>
-                    <textarea required rows={4} value={formData.descricao} onChange={e => setFormData({ ...formData, descricao: e.target.value })}
-                      placeholder="Descreva o incidente em detalhe: o que aconteceu, quando, onde exatamente..."
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white resize-none" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Atribuir Responsável</label>
-                    <select value={formData.responsavel_id} onChange={e => setFormData({ ...formData, responsavel_id: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs text-white">
-                      <option value="" className="bg-brand-surface">Selecionar Responsável (Opcional)</option>
-                      {users.map(u => <option key={u.id} value={u.id} className="bg-brand-surface">{u.nome} — {u.perfil}</option>)}
-                    </select>
-                  </div>
-
-                  {/* SLA preview */}
-                  <div className="p-3 bg-white/5 border border-brand-border text-[10px] text-gray-400 flex items-center gap-2">
-                    <Clock size={12} className="text-emerald-500 shrink-0" />
-                    {formData.severidade === 'Crítico' ? 'SLA: Resposta em 1h · Resolução em 4h' :
-                      formData.severidade === 'Alto' ? 'SLA: Resposta em 4h · Resolução em 24h' :
-                        formData.severidade === 'Médio' ? 'SLA: Resposta em 24h · Resolução em 72h' :
-                          'SLA: Resposta em 48h · Resolução em 168h'}
-                  </div>
-
-                  <div className="flex gap-3 pt-1">
-                    <button type="button" onClick={() => setIsModalOpen(false)}
-                      className="px-5 py-3 border border-brand-border text-gray-400 hover:text-white hover:border-gray-400 transition-colors font-bold text-xs uppercase tracking-widest">
-                      Cancelar
-                    </button>
-                    <button type="submit" disabled={submitting}
-                      className="flex-1 py-3 bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2">
-                      {submitting ? <><div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-none animate-spin" /> A processar...</> : 'Submeter Protocolo'}
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
+      {/* New Incident Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Reportar Incidente</DialogTitle>
+            <DialogDescription>Registar uma nova ocorrência técnica no sistema de gestão.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Unidade / Propriedade</Label>
+                <Select 
+                  value={formData.property_id} 
+                  onValueChange={(val) => setFormData({ ...formData, property_id: val })}
+                  required
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Selecione a unidade..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {properties.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.endereco}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo (Opcional)</Label>
+                <Select 
+                  value={formData.asset_id} 
+                  onValueChange={(val) => setFormData({ ...formData, asset_id: val })}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Vincular equipamento..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Geral (Sem Ativo)</SelectItem>
+                    {assets.filter(a => String(a.property_id) === String(formData.property_id)).map(a => (
+                      <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Categoria</Label>
+                <Select 
+                  value={formData.categoria} 
+                  onValueChange={(val) => setFormData({ ...formData, categoria: val })}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {incidentCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Severidade</Label>
+                <Select 
+                  value={formData.severidade} 
+                  onValueChange={(val) => setFormData({ ...formData, severidade: val })}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Crítico">Crítico</SelectItem>
+                    <SelectItem value="Alto">Alto</SelectItem>
+                    <SelectItem value="Médio">Médio</SelectItem>
+                    <SelectItem value="Baixo">Baixo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-        )}
-      </AnimatePresence>
+
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Descrição do Problema</Label>
+              <Textarea 
+                placeholder="Descreva o incidente em detalhe..." 
+                className="min-h-[100px]"
+                required
+                value={formData.descricao}
+                onChange={e => setFormData({ ...formData, descricao: e.target.value })}
+              />
+            </div>
+
+            <DialogFooter className="gap-3 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="flex-1">
+                {submitting ? 'A registar...' : 'Confirmar Reporte'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-

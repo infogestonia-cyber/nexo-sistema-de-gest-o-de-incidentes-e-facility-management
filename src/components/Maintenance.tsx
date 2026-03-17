@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ensureArray } from '../utils/safeArray';
 import {
-  Plus, Calendar, Settings, User, Clock, CheckCircle2, AlertCircle,
-  Search, Filter, X, MoreVertical, DollarSign, Activity, Shield,
-  Zap, ShieldCheck, Eye, Edit2, Trash2, Check, AlertTriangle,
-  ChevronDown, FileText, Wrench, ListChecks, ShieldCheck as HistoryIcon
+  Plus, Calendar as CalendarIcon, Settings, User, Clock, CheckCircle2, AlertCircle,
+  Search, X, MoreVertical, DollarSign, Activity, Shield,
+  Zap, Eye, Edit2, Trash2, Check, AlertTriangle,
+  ChevronDown, FileText, Wrench, ListChecks, History as HistoryIcon,
+  ArrowUpRight
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
   format, 
   startOfMonth, 
@@ -19,7 +19,20 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { canManageMaintenance } from '../utils/permissions';
-import { Toast, ToastType } from './ui/Toast';
+
+// --- shadcn UI imports ---
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Label } from './ui/label';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Textarea } from './ui/textarea';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from './ui/dropdown-menu';
 
 type MaintenanceTab = 'executions' | 'automation' | 'history';
 
@@ -35,14 +48,12 @@ export default function Maintenance() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [user] = useState<any>(() => {
+
+  const [currentUser] = useState<any>(() => {
     try {
       const u = localStorage.getItem('user');
       return u && u !== 'undefined' ? JSON.parse(u) : {};
@@ -66,20 +77,6 @@ export default function Maintenance() {
     threshold_value: '',
     categoria: 'Preventiva'
   });
-
-  const showToast = (msg: string, type: ToastType = 'success') => {
-    setToast({ msg, type });
-  };
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenuId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   useEffect(() => {
     fetchData();
@@ -116,10 +113,7 @@ export default function Maintenance() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.asset_id || !formData.responsavel_id) {
-      showToast('Selecione um Ativo e um Responsável.', 'error');
-      return;
-    }
+    if (!formData.asset_id || !formData.responsavel_id) return;
     setSubmitting(true);
     try {
       const res = await fetch('/api/maintenance-plans', {
@@ -127,18 +121,11 @@ export default function Maintenance() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify(formData)
       });
-
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
         setFormData({ asset_id: '', tipo: 'Preventiva', periodicidade: 'Mensal', proxima_data: format(new Date(), 'yyyy-MM-dd'), responsavel_id: '', custo_estimado: '', descricao: '' });
-        showToast('Plano de manutenção criado com sucesso!', 'success');
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Erro ao criar plano', 'error');
       }
-    } catch {
-      showToast('Erro de rede ao criar plano.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -146,14 +133,7 @@ export default function Maintenance() {
 
   const handleAutomationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!automationFormData.asset_id || !automationFormData.task_description) {
-      showToast('Por favor preencha Ativo e Descrição da Tarefa.', 'error');
-      return;
-    }
-    if (!automationFormData.frequency_days && !automationFormData.threshold_value) {
-      showToast('Defina pelo menos uma frequência (em dias) ou um limite de uso.', 'error');
-      return;
-    }
+    if (!automationFormData.asset_id || !automationFormData.task_description) return;
     setSubmitting(true);
     try {
       const res = await fetch('/api/maintenance/schedules', {
@@ -168,44 +148,17 @@ export default function Maintenance() {
           threshold_value: automationFormData.threshold_value ? parseInt(automationFormData.threshold_value) : null
         })
       });
-
       if (res.ok) {
         setIsAutomationModalOpen(false);
         setAutomationFormData({ asset_id: '', task_description: '', frequency_days: '', threshold_value: '', categoria: 'Preventiva' });
-        showToast('✓ Agendamento de automação criado com sucesso!');
         fetchData();
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Erro ao criar agendamento', 'error');
       }
-    } catch {
-      showToast('Erro de rede ao criar agendamento.', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleStartPlan = async (planId: string) => {
-    try {
-      const res = await fetch(`/api/maintenance/executions/${planId}/start`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) {
-        showToast('Plano iniciado com sucesso!');
-        fetchData();
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Erro ao iniciar plano', 'error');
-      }
-    } catch {
-      showToast('Erro de rede ao iniciar plano.', 'error');
-    }
-  };
-
   const handleMarkComplete = async (plan: any) => {
-    setOpenMenuId(null);
-    showToast('Processando conclusão do plano...', 'success');
     try {
       const res = await fetch(`/api/maintenance/executions/${plan.id}/complete`, {
         method: 'PATCH',
@@ -216,15 +169,11 @@ export default function Maintenance() {
         body: JSON.stringify({ observations: 'Concluído via interface de manutenção' })
       });
       if (res.ok) {
-        await fetchData();
-        showToast('✓ Plano de manutenção concluído com sucesso!', 'success');
+        fetchData();
         setSelectedPlan(null);
-      } else {
-        const err = await res.json();
-        showToast(err.error || 'Erro ao concluir plano', 'error');
       }
-    } catch (error: any) {
-      showToast(`Erro ao actualizar plano: ${error.message}`, 'error');
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -236,13 +185,11 @@ export default function Maintenance() {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
-        setPlans(prev => prev.filter(p => p.id !== id));
-        showToast('Plano eliminado com sucesso!', 'success');
+        fetchData();
       }
-    } catch {
-      showToast('Erro ao eliminar plano.', 'error');
+    } catch (e) {
+      console.error(e);
     }
-    setOpenMenuId(null);
   };
 
   const filteredPlans = ensureArray<any>(plans).filter(p => {
@@ -257,388 +204,494 @@ export default function Maintenance() {
     return matchesSearch && matchesMonth;
   });
 
-  const months = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-  ];
+  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-none animate-spin"></div>
-      <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">A carregar Protocolos de Manutenção...</p>
+      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar manutenção...</p>
     </div>
   );
 
   return (
-    <div className="space-y-6 page-enter">
-      <div className="flex items-center gap-4 bg-brand-surface border border-brand-border p-1 rounded-none w-fit">
-        {[
-          { id: 'executions', label: 'Protocolos Ativos', icon: Activity },
-          { id: 'automation', label: 'Automação & Agendamento', icon: Zap },
-          { id: 'history', label: 'Histórico', icon: HistoryIcon },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as MaintenanceTab)}
-            className={`px-4 py-2 flex items-center gap-2 text-xs font-bold uppercase transition-all rounded-none ${
-              activeTab === tab.id 
-                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
-                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-            }`}
-          >
-            <tab.icon size={14} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <Toast message={toast?.msg || null} type={toast?.type} onClose={() => setToast(null)} />
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Planos Ativos', value: plans.length, icon: Settings, color: 'text-emerald-500' },
-          { label: 'Preventiva', value: plans.filter(p => p.tipo === 'Preventiva').length, icon: Shield, color: 'text-blue-500' },
-          { label: 'Correctiva', value: plans.filter(p => p.tipo === 'Correctiva').length, icon: Wrench, color: 'text-amber-500' },
-          { label: 'Orçamento Total', value: `MT ${plans.reduce((acc, p) => acc + (p.custo_estimado || 0), 0).toLocaleString()}`, icon: DollarSign, color: 'text-purple-500' },
-        ].map((stat, i) => (
-          <div key={i} className="bg-brand-surface p-4 border border-brand-border flex items-center gap-4">
-            <div className={`p-2 bg-white/5 ${stat.color}`}><stat.icon size={16} /></div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{stat.label}</p>
-              <p className="text-sm font-bold text-white">{stat.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-3.5 h-3.5" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Pesquisar..."
-            className="pl-10 pr-4 py-2 bg-brand-surface border border-brand-border text-xs w-64"
-          />
+    <div className="space-y-6">
+      {/* Tab Navigation - Industrial Minimalism */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="flex bg-muted/20 p-1 border border-border rounded-md">
+          {[
+            { id: 'executions', label: 'Protocolos', icon: Activity },
+            { id: 'automation', label: 'Automação', icon: Zap },
+            { id: 'history', label: 'Histórico', icon: HistoryIcon },
+          ].map((tab) => (
+            <Button
+              key={tab.id}
+              variant={activeTab === tab.id ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveTab(tab.id as MaintenanceTab)}
+              className="h-8 gap-2 text-[10px] font-bold uppercase tracking-widest rounded-sm px-4"
+            >
+              <tab.icon size={13} />
+              {tab.label}
+            </Button>
+          ))}
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex bg-brand-surface border border-brand-border p-1">
-            <select 
-              value={selectedMonth} 
-              onChange={e => setSelectedMonth(parseInt(e.target.value))}
-              className="bg-transparent text-xs text-white border-none focus:ring-0 px-2 py-1 outline-none"
-            >
-              {months.map((m, i) => <option key={i} value={i} className="bg-brand-surface text-white">{m}</option>)}
-            </select>
-            <select 
-              value={selectedYear} 
-              onChange={e => setSelectedYear(parseInt(e.target.value))}
-              className="bg-transparent text-xs text-white border-none focus:ring-0 px-2 py-1 outline-none ml-1"
-            >
-              {[2024, 2025, 2026].map(y => <option key={y} value={y} className="bg-brand-surface text-white">{y}</option>)}
-            </select>
-          </div>
-
-          {activeTab === 'executions' && canManageMaintenance(user.perfil) && (
-            <button onClick={() => setIsModalOpen(true)} className="bg-emerald-500 text-white px-4 py-2 text-xs font-bold flex items-center gap-2">
-              <Plus size={14} /> Novo Plano
-            </button>
+           {activeTab === 'executions' && canManageMaintenance(currentUser.perfil) && (
+            <Button size="sm" className="h-9 gap-2 text-xs font-bold" onClick={() => setIsModalOpen(true)}>
+              <Plus size={16} /> Novo Plano
+            </Button>
           )}
-          {activeTab === 'automation' && canManageMaintenance(user.perfil) && (
-            <button onClick={() => setIsAutomationModalOpen(true)} className="bg-amber-500 text-white px-4 py-2 text-xs font-bold flex items-center gap-2">
-              <Zap size={14} /> Novo Agendamento
-            </button>
-          )}
-          {activeTab === 'executions' && (
-            <div className="flex bg-brand-surface border border-brand-border p-1">
-              <button onClick={() => setViewMode('list')} className={`p-1.5 text-xs font-bold ${viewMode === 'list' ? 'bg-emerald-500 text-white' : 'text-gray-500'}`}><ListChecks size={14} /></button>
-              <button onClick={() => setViewMode('calendar')} className={`p-1.5 text-xs font-bold ${viewMode === 'calendar' ? 'bg-emerald-500 text-white' : 'text-gray-500'}`}><Calendar size={14} /></button>
-            </div>
+          {activeTab === 'automation' && canManageMaintenance(currentUser.perfil) && (
+            <Button size="sm" variant="outline" className="h-9 gap-2 text-xs font-bold border-amber-500/30 text-amber-500 hover:bg-amber-500/10" onClick={() => setIsAutomationModalOpen(true)}>
+              <Zap size={16} /> Agendar Trigger
+            </Button>
           )}
         </div>
       </div>
 
-      {activeTab === 'executions' && (
-        viewMode === 'list' ? (
-          <div className="bg-brand-surface border border-brand-border overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-white/[0.02]">
-                  <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Ativo</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Tipo</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Frequência</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Responsável</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Próxima Data</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand-border">
-                {filteredPlans.map(plan => (
-                  <tr key={plan.id} className="hover:bg-white/[0.01] cursor-pointer" onClick={() => setSelectedPlan(plan)}>
-                    <td className="px-4 py-3 text-xs font-bold text-white">{plan.asset_name}</td>
-                    <td className="px-4 py-3"><span className={`px-2 py-0.5 text-[9px] font-bold uppercase ${plan.tipo === 'Preventiva' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{plan.tipo}</span></td>
-                    <td className="px-4 py-3 text-[10px] text-gray-400 uppercase">{plan.periodicidade}</td>
-                    <td className="px-4 py-3 text-xs text-gray-300">{plan.responsavel_nome}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-mono text-white">{plan.proxima_data}</span>
-                        <span className="text-[9px] text-gray-500 uppercase tracking-tighter">
-                          {Math.ceil((new Date(plan.proxima_data).getTime() - new Date().getTime()) / (1000 * 3600 * 24)) <= 0 ? (
-                            <span className="text-red-500 font-bold">Vencido</span>
-                          ) : (
-                            `Faltam ${Math.ceil((new Date(plan.proxima_data).getTime() - new Date().getTime()) / (1000 * 3600 * 24))} ${Math.ceil((new Date(plan.proxima_data).getTime() - new Date().getTime()) / (1000 * 3600 * 24)) === 1 ? 'dia' : 'dias'}`
-                          )}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === plan.id ? null : plan.id); }} className="p-1 text-gray-500 hover:text-white"><MoreVertical size={14} /></button>
-                      {openMenuId === plan.id && (
-                        <div className="absolute right-0 mt-2 w-40 bg-brand-surface border border-brand-border shadow-xl z-50">
-                          <button onClick={() => handleMarkComplete(plan)} className="w-full text-left px-4 py-2 text-xs hover:bg-white/5 flex items-center gap-2"><Check size={12} /> Concluir</button>
-                          <button onClick={() => handleDelete(plan.id)} className="w-full text-left px-4 py-2 text-xs text-red-400 hover:bg-white/5 flex items-center gap-2"><Trash2 size={12} /> Eliminar</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-1">
-            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
-              <div key={day} className="p-2 bg-white/[0.02] border border-brand-border text-[10px] font-bold text-gray-500 uppercase text-center">{day}</div>
-            ))}
-            {(() => {
-              const monthStart = startOfMonth(new Date(selectedYear, selectedMonth));
-              const monthEnd = endOfMonth(monthStart);
-              const startDate = startOfWeek(monthStart);
-              const endDate = endOfWeek(monthEnd);
-              const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+      {/* Stats Quick View */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Protocolos Ativos', value: plans.length, icon: Activity, color: 'text-foreground' },
+          { label: 'Preventiva', value: plans.filter(p => p.tipo === 'Preventiva').length, icon: Shield, color: 'text-primary' },
+          { label: 'Correctiva', value: plans.filter(p => p.tipo === 'Correctiva').length, icon: Wrench, color: 'text-warning' },
+          { label: 'Budget Mensal', value: `MT ${plans.reduce((acc, p) => acc + (p.custo_estimado || 0), 0).toLocaleString()}`, icon: DollarSign, color: 'text-success' },
+        ].map((s, i) => (
+          <Card key={i} className="shadow-none border-border">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{s.label}</p>
+                <p className={`text-sm font-bold mt-1 ${s.color}`}>{s.value}</p>
+              </div>
+              <s.icon size={18} className="text-muted-foreground/30" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-              return calendarDays.map((day, i) => {
-                const dayStr = format(day, 'yyyy-MM-dd');
-                const dayPlans = filteredPlans.filter(p => p.proxima_data === dayStr);
-                const isCurrentMonth = isSameMonth(day, monthStart);
-
-                return (
-                  <div key={i} className={`bg-brand-surface border border-brand-border p-1 min-h-[80px] ${!isCurrentMonth ? 'opacity-20' : ''}`}>
-                    <p className={`text-[9px] font-bold mb-1 ${isSameDay(day, new Date()) ? 'text-emerald-500' : 'text-gray-500'}`}>{format(day, 'd')}</p>
-                    <div className="space-y-1">
-                      {dayPlans.map(p => (
-                        <div key={p.id} onClick={() => setSelectedPlan(p)} className={`p-1 border cursor-pointer hover:brightness-125 transition-all ${p.tipo === 'Preventiva' ? 'bg-emerald-500/20 border-emerald-500/40 text-white' : 'bg-red-500/20 border-red-500/40 text-white'}`}>
-                          <p className="text-[8px] font-bold leading-tight truncate drop-shadow-md">{p.asset_name}</p>
-                          <p className="text-[7px] opacity-80 truncate uppercase tracking-tighter">{p.responsavel_nome}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        )
-      )}
-
-      {activeTab === 'automation' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 bg-brand-surface border border-brand-border divide-y divide-brand-border">
-            <div className="p-4 bg-white/[0.02] border-b border-brand-border flex items-center justify-between">
-              <h3 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2"><Zap size={14} className="text-amber-500" /> Agendamentos Inteligentes</h3>
+      {/* Active Content */}
+      <div className="space-y-6">
+        {activeTab === 'executions' && (
+          <>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-3.5 h-3.5" />
+                  <Input
+                    placeholder="Pesquisar..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-9 w-64 h-9 text-xs bg-muted/20 border-border"
+                  />
+                </div>
+                <Select value={selectedMonth.toString()} onValueChange={val => setSelectedMonth(parseInt(val))}>
+                  <SelectTrigger className="w-32 h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((m, i) => <SelectItem key={i} value={i.toString()}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedYear.toString()} onValueChange={val => setSelectedYear(parseInt(val))}>
+                  <SelectTrigger className="w-24 h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[2024, 2025, 2026].map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex bg-muted/20 p-1 border border-border rounded-md">
+                <Button variant={viewMode === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('list')} className="h-7 w-7"><ListChecks size={13} /></Button>
+                <Button variant={viewMode === 'calendar' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('calendar')} className="h-7 w-7"><CalendarIcon size={13} /></Button>
+              </div>
             </div>
-            {schedules.length === 0 ? (
-              <div className="p-12 text-center text-gray-500 text-xs italic">Nenhum agendamento ativo.</div>
-            ) : schedules.map(s => (
-              <div key={s.id} className="p-4 flex items-center justify-between">
+
+            {viewMode === 'list' ? (
+              <Card className="shadow-none border-border overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Ativo</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Tipo</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Periodicidade</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Responsável</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Vencimento</TableHead>
+                      <TableHead className="w-12 h-10"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPlans.map(plan => {
+                      const daysLeft = Math.ceil((new Date(plan.proxima_data).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+                      return (
+                        <TableRow key={plan.id} className="cursor-pointer group h-14" onClick={() => setSelectedPlan(plan)}>
+                          <TableCell className="text-xs font-semibold">{plan.asset_name}</TableCell>
+                          <TableCell>
+                            <Badge variant={plan.tipo === 'Preventiva' ? 'outline' : 'destructive'} className="text-[9px] h-4 uppercase font-bold">
+                              {plan.tipo}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
+                            {plan.periodicidade}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden shrink-0">
+                                <User size={10} className="text-muted-foreground" />
+                              </div>
+                              <span className="text-xs text-muted-foreground">{plan.responsavel_nome}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-mono">{plan.proxima_data}</span>
+                              <span className={`text-[9px] font-bold uppercase ${daysLeft <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                {daysLeft <= 0 ? 'Vencido' : `${daysLeft} dias restantes`}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                             <DropdownMenu>
+                              <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
+                                  <MoreVertical size={14} />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48 text-xs">
+                                <DropdownMenuLabel>Gestão de Plano</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleMarkComplete(plan)}>
+                                  <Check size={14} className="mr-2" /> Concluir Trabalho
+                                </DropdownMenuItem>
+                                <DropdownMenuItem>
+                                  <Edit2 size={14} className="mr-2" /> Editar Plano
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(plan.id)}>
+                                  <Trash2 size={14} className="mr-2" /> Eliminar Plano
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {filteredPlans.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic text-xs">
+                          Nenhum plano pendente neste período.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </Card>
+            ) : (
+              <Card className="shadow-none border-border overflow-hidden p-4">
+                <div className="grid grid-cols-7 gap-px bg-border rounded-lg border border-border overflow-hidden">
+                  {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+                    <div key={d} className="bg-muted/50 p-2 text-center text-[10px] font-bold text-muted-foreground uppercase">{d}</div>
+                  ))}
+                  {(() => {
+                    const monthStart = startOfMonth(new Date(selectedYear, selectedMonth));
+                    const monthEnd = endOfMonth(monthStart);
+                    const startDate = startOfWeek(monthStart);
+                    const endDate = endOfWeek(monthEnd);
+                    const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+                    return calendarDays.map((day, i) => {
+                      const dayStr = format(day, 'yyyy-MM-dd');
+                      const dayPlans = filteredPlans.filter(p => p.proxima_data === dayStr);
+                      const isCurrentMonth = isSameMonth(day, monthStart);
+
+                      return (
+                        <div key={i} className={`bg-card h-24 p-2 relative group hover:bg-muted/10 transition-colors flex flex-col ${!isCurrentMonth ? 'opacity-20' : ''}`}>
+                          <span className={`text-[10px] font-bold ${isSameDay(day, new Date()) ? 'text-primary' : 'text-muted-foreground'}`}>{format(day, 'd')}</span>
+                          <div className="mt-1 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
+                            {dayPlans.map(p => (
+                              <div key={p.id} onClick={() => setSelectedPlan(p)} className={`px-1.5 py-0.5 text-[8px] font-bold truncate rounded-sm border cursor-pointer hover:brightness-90 ${p.tipo === 'Preventiva' ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}>
+                                {p.asset_name}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+
+        {activeTab === 'automation' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 space-y-4">
+              <Card className="shadow-none border-border overflow-hidden">
+                <Table>
+                   <TableHeader className="bg-muted/30">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Tarefa Agendada</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Recorrência</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold h-10">Status</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold h-10 text-right">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {schedules.map(s => (
+                      <TableRow key={s.id} className="h-14">
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-semibold">{s.task_description}</span>
+                            <span className="text-[10px] text-muted-foreground uppercase">{s.assets?.nome}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase">
+                            <Clock size={12} />
+                            {s.frequency_days ? `Cada ${s.frequency_days} dias` : `Limite ${s.threshold_value}`}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[9px] h-4 bg-primary/10 text-primary border-primary/20">ATIVO</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 hover:text-foreground">
+                            <MoreHorizontal size={14}/>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {schedules.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic text-xs">Sem automações configuradas.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </Card>
+            </div>
+            
+            <div className="space-y-6">
+              <Card className="shadow-none border-border bg-zinc-950 text-white">
+                <CardHeader className="p-4 border-b border-white/10">
+                  <CardTitle className="text-[10px] uppercase font-bold flex items-center gap-2">
+                    <Zap size={14} className="text-amber-500" />
+                    Motor de Automação
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-5 space-y-4">
+                  <p className="text-[10px] text-zinc-400 leading-relaxed">
+                    O sistema verifica diariamente gatilhos baseados em tempo e registros de medidores para gerar novos protocolos.
+                  </p>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded flex items-center gap-3">
+                    <div className="h-2 w-2 rounded-full bg-success animate-pulse"></div>
+                    <span className="text-[10px] font-bold uppercase text-zinc-300">Sincronizado & Ativo</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <Card className="shadow-none border-border overflow-hidden">
+            <Table>
+              <TableHeader className="bg-muted/30">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-[10px] uppercase font-bold h-10">Ativo</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold h-10">Tipo</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold h-10">Conclusão</TableHead>
+                  <TableHead className="text-[10px] uppercase font-bold h-10">Técnico Responsável</TableHead>
+                  <TableHead className="w-12 h-10"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {history.map(h => (
+                  <TableRow key={h.id} className="h-14">
+                    <TableCell className="text-xs font-semibold">{h.assets?.nome}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[8px] h-3.5 bg-muted/20 text-muted-foreground">{h.tipo}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {h.data_conclusao ? format(new Date(h.data_conclusao), 'dd/MM/yyyy HH:mm') : '—'}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{h.profiles?.nome}</TableCell>
+                    <TableCell className="text-right">
+                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30"><Eye size={14} /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+      </div>
+
+      {/* New Plan Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Plano de Manutenção</DialogTitle>
+            <DialogDescription>Registe um protocolo preventivo ou correctivo para um ativo.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+             <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Equipamento / Ativo</Label>
+              <Select value={formData.asset_id} onValueChange={val => setFormData({...formData, asset_id: val})}>
+                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {assets.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Tipo de Plano</Label>
+                <Select value={formData.tipo} onValueChange={val => setFormData({...formData, tipo: val})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Preventiva">Preventiva</SelectItem>
+                    <SelectItem value="Correctiva">Correctiva</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Frequência</Label>
+                <Select value={formData.periodicidade} onValueChange={val => setFormData({...formData, periodicidade: val})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Única">Única</SelectItem>
+                    <SelectItem value="Semanal">Semanal</SelectItem>
+                    <SelectItem value="Mensal">Mensal</SelectItem>
+                    <SelectItem value="Trimestral">Trimestral</SelectItem>
+                    <SelectItem value="Anual">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Próxima Data</Label>
+                <Input type="date" value={formData.proxima_data} onChange={e => setFormData({...formData, proxima_data: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Budget Estimado (MT)</Label>
+                <Input type="number" placeholder="0.00" value={formData.custo_estimado} onChange={e => setFormData({...formData, custo_estimado: e.target.value})} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Técnico Responsável</Label>
+              <Select value={formData.responsavel_id} onValueChange={val => setFormData({...formData, responsavel_id: val})}>
+                <SelectTrigger><SelectValue placeholder="Selecione técnico..." /></SelectTrigger>
+                <SelectContent>
+                  {users.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Instruções Técnicas</Label>
+              <Textarea placeholder="Descreva as tarefas a realizar..." rows={3} value={formData.descricao} onChange={e => setFormData({...formData, descricao: e.target.value})} />
+            </div>
+            <DialogFooter className="gap-3 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="flex-1 font-bold">
+                {submitting ? 'A criar...' : 'Confirmar Protocolo'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Automation Modal */}
+      <Dialog open={isAutomationModalOpen} onOpenChange={setIsAutomationModalOpen}>
+        <DialogContent className="max-w-md">
+           <DialogHeader>
+            <DialogTitle>Novo Agendamento Inteligente</DialogTitle>
+            <DialogDescription>Crie gatilhos automáticos baseados em tempo ou uso.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAutomationSubmit} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo Alvo</Label>
+              <Select value={automationFormData.asset_id} onValueChange={val => setAutomationFormData({...automationFormData, asset_id: val})}>
+                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {assets.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Descrição da Tarefa Automática</Label>
+              <Input required value={automationFormData.task_description} onChange={e => setAutomationFormData({...automationFormData, task_description: e.target.value})} placeholder="ex: Troca de Filtros" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Freq. Duração (Dias)</Label>
+                <Input type="number" placeholder="ex: 180" value={automationFormData.frequency_days} onChange={e => setAutomationFormData({...automationFormData, frequency_days: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Threshold de Uso</Label>
+                <Input type="number" placeholder="ex: 5000" value={automationFormData.threshold_value} onChange={e => setAutomationFormData({...automationFormData, threshold_value: e.target.value})} />
+              </div>
+            </div>
+            <DialogFooter className="gap-3 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsAutomationModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="flex-1 bg-amber-500 hover:bg-amber-600 font-bold border-none text-white">
+                {submitting ? 'Ativando...' : 'Ativar Automação'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Plan Details Modal */}
+      <Dialog open={!!selectedPlan} onOpenChange={() => setSelectedPlan(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resumo do Protocolo</DialogTitle>
+            <DialogDescription>Informação detalhada da manutenção preventiva/correctiva.</DialogDescription>
+          </DialogHeader>
+          {selectedPlan && (
+            <div className="space-y-6 pt-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <h4 className="text-sm font-bold text-white">{s.task_description}</h4>
-                  <p className="text-[10px] text-gray-500 tracking-wider">ATIVO: {s.assets?.nome} • FREQ: {s.frequency_days ? `${s.frequency_days} dias` : `Limite ${s.threshold_value}`}</p>
+                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo</Label>
+                  <p className="font-semibold">{selectedPlan.asset_name}</p>
                 </div>
-                <span className="px-2 py-1 bg-amber-500/10 text-amber-500 text-[9px] font-bold uppercase">Ativo</span>
-              </div>
-            ))}
-          </div>
-          <div className="bg-brand-surface border border-brand-border p-6 space-y-4">
-             <h3 className="text-xs font-bold text-white uppercase tracking-widest">Motor de Automação</h3>
-             <p className="text-[11px] text-gray-400 leading-relaxed italic">Verifica gatilhos de manutenção em tempo real.</p>
-             <div className="p-4 bg-brand-surface/50 border border-brand-border">
-                <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-2"><Activity size={12} /> Sincronizado</p>
-                <p className="text-xs text-white mt-1">Status: Operacional</p>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'history' && (
-        <div className="bg-brand-surface border border-brand-border overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white/[0.02]">
-                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Ativo</th>
-                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Tipo</th>
-                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Concluído</th>
-                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">Responsável</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-brand-border">
-              {history.map(h => (
-                <tr key={h.id} className="hover:bg-white/[0.01]">
-                  <td className="px-4 py-3 text-xs font-bold text-white">{h.assets?.nome}</td>
-                  <td className="px-4 py-3"><span className="px-2 py-0.5 bg-gray-500/10 text-gray-400 text-[9px] font-bold uppercase">{h.tipo}</span></td>
-                  <td className="px-4 py-3 text-xs font-mono text-gray-300">{h.data_conclusao ? format(new Date(h.data_conclusao), 'dd/MM/yyyy') : '—'}</td>
-                  <td className="px-4 py-3 text-xs text-gray-400">{h.profiles?.nome}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-brand-surface w-full max-w-lg border border-brand-border relative z-10 shadow-2xl">
-              <div className="p-6 bg-emerald-500 text-white flex justify-between items-center">
-                <h2 className="font-bold">Novo Plano de Manutenção</h2>
-                <X size={20} className="cursor-pointer" onClick={() => setIsModalOpen(false)} />
-              </div>
-              <form onSubmit={handleSubmit} className="p-8 space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Ativo</label>
-                  <select required value={formData.asset_id} onChange={e => setFormData({...formData, asset_id: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white">
-                    <option value="">Selecionar Ativo...</option>
-                    {assets.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
-                  </select>
+                <div>
+                   <Label className="text-[10px] uppercase font-bold text-muted-foreground">Vencimento</Label>
+                   <p className="font-semibold">{selectedPlan.proxima_data}</p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Tipo</label>
-                    <select value={formData.tipo} onChange={e => setFormData({...formData, tipo: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white">
-                      <option value="Preventiva">Preventiva</option>
-                      <option value="Correctiva">Correctiva</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Frequência</label>
-                    <select value={formData.periodicidade} onChange={e => setFormData({...formData, periodicidade: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white">
-                      <option value="Única">Única</option>
-                      <option value="Semanal">Semanal</option>
-                      <option value="Mensal">Mensal</option>
-                      <option value="Trimestral">Trimestral</option>
-                      <option value="Semestral">Semestral</option>
-                      <option value="Anual">Anual</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Data</label>
-                    <input type="date" value={formData.proxima_data} onChange={e => setFormData({...formData, proxima_data: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white" />
-                  </div>
+                <div>
+                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Tipo</Label>
+                  <p className="font-semibold">{selectedPlan.tipo}</p>
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Responsável *</label>
-                  <select required value={formData.responsavel_id} onChange={e => setFormData({...formData, responsavel_id: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white">
-                    <option value="">Selecionar Responsável...</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.nome} ({u.perfil})</option>)}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Descrição / Observações</label>
-                  <textarea rows={3} value={formData.descricao} onChange={e => setFormData({...formData, descricao: e.target.value})} placeholder="Instruções para o técnico..." className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white resize-none" />
-                </div>
-                <button type="submit" disabled={submitting} className="w-full py-4 bg-emerald-500 text-white font-bold uppercase tracking-widest text-xs">Confirmar Plano</button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-
-        {isAutomationModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAutomationModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-brand-surface w-full max-w-lg border border-brand-border relative z-10 shadow-2xl">
-              <div className="p-6 bg-amber-500 text-white flex justify-between items-center">
-                <h2 className="font-bold">Nova Automação</h2>
-                <X size={20} className="cursor-pointer" onClick={() => setIsAutomationModalOpen(false)} />
-              </div>
-              <form onSubmit={handleAutomationSubmit} className="p-8 space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Ativo Alvo</label>
-                  <select required value={automationFormData.asset_id} onChange={e => setAutomationFormData({...automationFormData, asset_id: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white">
-                    <option value="">Selecionar Ativo...</option>
-                    {assets.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Tarefa</label>
-                  <input type="text" required value={automationFormData.task_description} onChange={e => setAutomationFormData({...automationFormData, task_description: e.target.value})} placeholder="ex: Troca de Óleo" className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Freq. (Dias)</label>
-                    <input type="number" value={automationFormData.frequency_days} onChange={e => setAutomationFormData({...automationFormData, frequency_days: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Limite Uso</label>
-                    <input type="number" value={automationFormData.threshold_value} onChange={e => setAutomationFormData({...automationFormData, threshold_value: e.target.value})} className="w-full px-4 py-3 bg-white/5 border border-brand-border text-xs text-white" />
-                  </div>
-                </div>
-                <button type="submit" disabled={submitting} className="w-full py-4 bg-amber-500 text-white font-bold uppercase tracking-widest text-xs">Ativar Automação</button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-
-        {selectedPlan && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedPlan(null)} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-brand-surface w-full max-w-md border border-brand-border relative z-10 p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-white uppercase tracking-tight">Detalhes do Protocolo</h3>
-                <X size={18} className="text-gray-500 cursor-pointer" onClick={() => setSelectedPlan(null)} />
-              </div>
-              <div className="space-y-4">
-                <div className="p-4 bg-white/5 border border-brand-border">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Ativo</p>
-                  <p className="text-sm font-bold text-white">{selectedPlan.asset_name}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="p-4 bg-white/5 border border-brand-border">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Tipo</p>
-                    <p className="text-sm font-bold text-white">{selectedPlan.tipo}</p>
-                  </div>
-                  <div className="p-4 bg-white/5 border border-brand-border">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Data</p>
-                    <p className="text-sm font-bold text-white">{selectedPlan.proxima_data}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-white/5 border border-brand-border">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Periodicidade</p>
-                    <p className="text-sm font-bold text-white">{selectedPlan.periodicidade}</p>
-                  </div>
-                  <div className="p-4 bg-white/5 border border-brand-border">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Responsável</p>
-                    <p className="text-xs font-bold text-emerald-500">{selectedPlan.responsavel_nome}</p>
-                  </div>
-                </div>
-                <div className="p-4 bg-white/5 border border-brand-border">
-                   <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Observações / Instruções</p>
-                   <p className="text-xs text-gray-400 leading-relaxed italic">{selectedPlan.descricao || 'Nenhuma instrução adicional.'}</p>
+                <div>
+                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Responsável</Label>
+                  <p className="font-semibold text-primary">{selectedPlan.responsavel_nome}</p>
                 </div>
               </div>
-              <div className="mt-8 flex gap-3">
-                <button onClick={() => handleMarkComplete(selectedPlan)} className="flex-1 py-3 bg-emerald-500 text-white font-bold text-xs uppercase">Concluir Agora</button>
-                <button onClick={() => setSelectedPlan(null)} className="flex-1 py-3 border border-brand-border text-gray-400 text-xs uppercase">Fechar</button>
+              <Separator />
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Instruções / Notas</Label>
+                <p className="text-xs text-muted-foreground leading-relaxed bg-muted/20 p-4 border border-border rounded-md italic">
+                  "{selectedPlan.descricao || 'Sem instruções específicas registradas.'}"
+                </p>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+              <DialogFooter className="gap-3">
+                 <Button variant="outline" className="flex-1" onClick={() => setSelectedPlan(null)}>Fechar</Button>
+                 <Button className="flex-1" onClick={() => handleMarkComplete(selectedPlan)}>
+                    Concluir Agora
+                 </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+// Utilities mapped for local scope safety
+import { MoreHorizontal } from 'lucide-react';

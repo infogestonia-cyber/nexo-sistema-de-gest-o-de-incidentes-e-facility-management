@@ -1,118 +1,109 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
+@import "tw-animate-css";
 
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-serif: "Playfair Display", serif;
+@custom-variant dark (&:is(.dark *));
 
-  --color-brand-bg: #0A0B0D;
-  --color-brand-surface: #151619;
-  --color-brand-accent: #10B981;
-  --color-brand-border: rgba(255, 255, 255, 0.06);
-  --color-brand-text-primary: #FFFFFF;
-  --color-brand-text-secondary: #94A3B8;
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  
+  /* shadcn/ui default New York - Dark Mode */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  /* Magic UI / Aceternity Specific */
+  --color-brand-surface: var(--card);
+  --color-brand-border: var(--border);
+  
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
 }
 
-:root.light {
-  --color-brand-bg: #F8FAFC;
-  --color-brand-surface: #FFFFFF;
-  --color-brand-accent: #10B981;
-  --color-brand-border: rgba(0, 0, 0, 0.08);
-  --color-brand-text-primary: #0F172A;
-  --color-brand-text-secondary: #64748B;
+:root {
+  /* shadcn/ui "zinc" New York Light Theme - Precise Values */
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #18181b;
+  
+  --radius: 0.5rem;
+}
+
+.dark {
+  /* shadcn/ui "zinc" New York Dark Theme - Precise Values */
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #09090b;
+  --card-foreground: #fafafa;
+  --popover: #09090b;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #d4d4d8;
 }
 
 @layer base {
+  * {
+    @apply border-border;
+  }
   body {
-    @apply bg-brand-bg text-brand-text-secondary antialiased font-sans text-[13px] transition-colors duration-300;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    @apply text-brand-text-primary font-bold tracking-tight;
-  }
-
-  input,
-  select,
-  textarea {
-    @apply text-brand-text-primary placeholder:text-gray-600;
-  }
-
-  .light input,
-  .light select,
-  .light textarea {
-    @apply placeholder:text-slate-400;
-  }
-
-  .light option {
-    @apply bg-white text-slate-900;
+    @apply bg-background text-foreground antialiased text-sm;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* Global Light Theme Overrides for hardcoded classes */
-.light .text-white {
-  @apply !text-slate-900;
-}
-
-.light .bg-white\/5 {
-  @apply !bg-slate-100;
-}
-
-.light .bg-white\/\[0\.02\] {
-  @apply !bg-slate-50;
-}
-
-.light .border-white\/5,
-.light .border-white\/10 {
-  @apply !border-slate-200;
-}
-
-.light .text-gray-300 { @apply !text-slate-800; }
-.light .text-gray-400 { @apply !text-slate-700; }
-.light .text-gray-500 { @apply !text-slate-600; }
-.light .text-gray-600 { @apply !text-slate-500; }
-
-.light .bg-brand-surface {
-  @apply !bg-white shadow-sm;
-}
-
-.light .border-brand-border {
-  @apply !border-slate-200;
-}
-
-  .light .bg-brand-surface {
-  @apply !bg-white shadow-sm;
-}
-
-.light .border-brand-border {
-  @apply !border-slate-200;
-}
-
-.light .bg-white/5 {
-  @apply !bg-slate-100/80;
-}
-
-.light .text-emerald-500 {
-  @apply !text-emerald-600;
-}
-
-.light .bg-emerald-500/10 {
-  @apply !bg-emerald-50;
-}
-
-.light .col-header {
-  @apply !text-slate-500 bg-slate-50/50;
-}
-
-/* Premium Geometric Scrollbar */
+/* Scroll area styling - shadcn typical */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -120,110 +111,25 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 0px;
-}
-
-.light ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.08);
+  @apply bg-muted-foreground/30 rounded-full border-[2px] border-solid border-transparent bg-clip-padding;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.1);
+  @apply bg-muted-foreground/50;
 }
 
-.light ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-/* Geometric Classes */
-.glass {
-  @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-none;
-}
-
-.glass-dark {
-  @apply bg-black/40 backdrop-blur-2xl border border-white/5 rounded-none;
-}
-
-/* Data Grid Styling */
-.data-row {
-  @apply border-b border-brand-border hover:bg-white/[0.02] transition-all duration-200 cursor-pointer rounded-none;
-}
-
-.light .data-row:hover {
-  @apply bg-slate-100;
-}
-
-.col-header {
-  @apply font-mono font-bold text-[9px] text-gray-500 uppercase tracking-[0.15em] py-3 px-4 bg-white/[0.01];
-}
-
-.data-value {
-  @apply font-mono tracking-tight text-[11px];
-}
-
-.sidebar-item {
-  @apply flex items-center gap-3 px-4 py-3 rounded-none transition-all duration-200 text-gray-500 hover:text-white hover:bg-white/5 border-l-2 border-transparent;
-}
-
-.light .sidebar-item:hover {
-  @apply bg-slate-100 text-slate-900;
-}
-
-.sidebar-item.active {
-  @apply text-emerald-500 bg-emerald-500/10 border-l-emerald-500;
-}
-
-.light .sidebar-item.active {
-  @apply bg-emerald-500/5;
-}
-
-/* Animation for page transitions - Linear for enterprise feel */
+/* Animations */
 .page-enter {
-  animation: fadeIn 0.25s ease-out;
+  animation: enter 0.2s ease-out;
 }
 
-@keyframes fadeIn {
+@keyframes enter {
   from {
     opacity: 0;
-    transform: translateX(4px);
+    transform: translateY(4px);
   }
-
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
-}
-
-/* Premium Animated Backgrounds */
-@keyframes float {
-  0% {
-    transform: translate(0px, 0px) scale(1);
-  }
-
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
-
-  100% {
-    transform: translate(0px, 0px) scale(1);
-  }
-}
-
-.animate-float {
-  animation: float 15s ease-in-out infinite;
-}
-
-.animate-float-delayed {
-  animation: float 18s ease-in-out infinite;
-  animation-delay: -7s;
-}
-
-.animate-float-slow {
-  animation: float 25s ease-in-out infinite;
-  animation-delay: -2s;
 }

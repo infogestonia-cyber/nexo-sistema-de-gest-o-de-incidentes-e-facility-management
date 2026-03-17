@@ -1,26 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard,
-  Building2,
-  Wrench,
-  AlertCircle,
-  Calendar,
-  Users as UsersIcon,
-  LogOut,
-  Menu,
-  X,
-  Bell,
-  Search,
-  ChevronRight,
-  ShieldCheck,
-  Activity,
-  Cpu,
-  Settings,
-  Sun,
-  Moon,
-  FileText,
-  Package,
-  Scan
+  LayoutDashboard, Building2, Wrench, AlertCircle, Calendar,
+  Users as UsersIcon, LogOut, Menu, X, Bell, Search, 
+  ShieldCheck, Cpu, Settings, Sun, Moon, FileText, Package, Scan
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import socket, { connectSocket, disconnectSocket } from './services/socketService';
@@ -41,10 +23,15 @@ import AssetScanner from './components/AssetScanner';
 import Analytics from './components/Analytics';
 import SystemSettings from './components/SystemSettings';
 import ChangePassword from './components/ChangePassword';
+
 import { api } from './services/api';
 import { requestNotificationPermission, showPushNotification } from './utils/notifications';
-
 import { canManageUsers, canViewReports, canManageSettings } from './utils/permissions';
+
+// --- UI components ---
+import { Input } from './components/ui/input';
+import { Button } from './components/ui/button';
+import { Avatar, AvatarFallback } from './components/ui/avatar';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -70,12 +57,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('token'); // Changed from 'user' to 'token' for clarity
+    const savedToken = localStorage.getItem('token');
     if (savedToken) {
       const validateSession = async () => {
         try {
           const data = await api.get('/api/me');
-          setUser(data.user); // Assuming 'user' is the correct state variable
+          setUser(data.user);
           connectSocket(data.user);
           fetchNotifications();
         } catch (e) {
@@ -88,7 +75,7 @@ export default function App() {
       validateSession();
     } else {
       setIsValidating(false);
-      setUser(null); // Ensure user is null if no token
+      setUser(null);
     }
     return () => disconnectSocket();
   }, [token]);
@@ -149,31 +136,25 @@ export default function App() {
 
   if (isValidating || isSyncing) {
     return (
-      <div className="min-h-screen bg-brand-bg flex items-center justify-center relative overflow-hidden">
-        {/* Geometric Background for Loader */}
-        <div className="absolute inset-0 z-0">
-          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/5 rounded-none blur-[120px] animate-pulse"></div>
-        </div>
-        
+      <div className="min-h-screen bg-background flex items-center justify-center relative overflow-hidden">
         <div className="relative z-10 flex flex-col items-center">
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="w-24 h-24 bg-brand-surface border border-brand-border rounded-none flex items-center justify-center mb-10 shadow-2xl relative"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-20 h-20 bg-card border border-border shadow-sm rounded-xl flex items-center justify-center mb-8 relative overflow-hidden"
           >
-            <div className="absolute inset-0 border border-emerald-500/30 border-t-emerald-500 rounded-none animate-spin"></div>
-            <ShieldCheck size={36} className="text-emerald-500" />
+            <ShieldCheck size={32} className="text-primary" />
           </motion.div>
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="text-center"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-center space-y-3"
           >
-            <h2 className="text-sm font-black text-white tracking-[0.4em] uppercase mb-3">Estabelecendo Ligação Segura</h2>
-            <div className="flex items-center gap-3 justify-center">
-              <span className="w-1.5 h-1.5 bg-emerald-500 animate-pulse"></span>
-              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em]">Autenticação em Curso</span>
+            <h2 className="text-sm font-bold text-foreground tracking-widest uppercase">Estabelecendo Ligação Segura</h2>
+            <div className="flex items-center justify-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest">Autenticação em Curso</span>
             </div>
           </motion.div>
         </div>
@@ -185,153 +166,160 @@ export default function App() {
     return <Login onLogin={handleLogin} />;
   }
 
-  // Force Password Change redirection
   if (user?.must_change_password) {
     return <ChangePassword />;
   }
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'properties', label: 'Propriedades', icon: Building2 },
-    { id: 'assets', label: 'Ativos & Inspecções', icon: Cpu },
-    { id: 'incidents', label: 'Incidentes', icon: AlertCircle },
-    { id: 'maintenance', label: 'Manutenção', icon: Wrench },
-    { id: 'inventory', label: 'Inventário', icon: Package },
-    { id: 'analytics', label: 'Indicadores', icon: ShieldCheck },
-    { id: 'scanner', label: 'Scanner QR', icon: Scan },
-    { id: 'planning', label: 'Roteiro Estratégico', icon: Calendar },
-    { id: 'reports', label: 'Relatórios', icon: FileText, permission: canViewReports },
-    { id: 'users', label: 'Utilizadores', icon: UsersIcon, permission: canManageUsers },
-    { id: 'settings', label: 'Configurações', icon: Settings, permission: canManageSettings },
+  const navGroups = [
+    {
+      label: 'Geral',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'properties', label: 'Propriedades', icon: Building2 },
+        { id: 'assets', label: 'Ativos & Inspecções', icon: Cpu },
+        { id: 'incidents', label: 'Incidentes', icon: AlertCircle },
+        { id: 'maintenance', label: 'Manutenção', icon: Wrench },
+        { id: 'inventory', label: 'Inventário', icon: Package },
+      ]
+    },
+    {
+      label: 'Inteligência',
+      items: [
+        { id: 'analytics', label: 'Indicadores', icon: ShieldCheck },
+        { id: 'scanner', label: 'Scanner QR', icon: Scan },
+        { id: 'planning', label: 'Roteiro Estratégico', icon: Calendar },
+        { id: 'reports', label: 'Relatórios', icon: FileText, permission: canViewReports },
+      ]
+    },
+    {
+      label: 'Sistema',
+      items: [
+        { id: 'users', label: 'Utilizadores', icon: UsersIcon, permission: canManageUsers },
+        { id: 'settings', label: 'Configurações', icon: Settings, permission: canManageSettings },
+      ]
+    }
   ];
 
+  const currentItem = [...navGroups[0].items, ...navGroups[1].items, ...navGroups[2].items].find(i => i.id === activeTab);
 
   return (
-    <div className="min-h-screen bg-brand-bg flex font-sans text-gray-300 selection:bg-emerald-500/30 overflow-hidden relative">
-      {/* Global Animated Background Orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[50%] bg-emerald-500/5 rounded-full blur-[150px] animate-float"></div>
-        <div className="absolute bottom-[-20%] left-[-10%] w-[50%] h-[50%] bg-teal-500/5 rounded-full blur-[150px] animate-float-delayed"></div>
-      </div>
-
-      {/* Premium Sidebar */}
+    <div className="min-h-screen bg-background flex font-sans text-foreground overflow-hidden h-screen w-full">
+      {/* High-Fidelity Sidebar - Acme Inc. style */}
       <motion.aside
         initial={false}
-        animate={{ width: isSidebarOpen ? 240 : (window.innerWidth < 1024 ? 0 : 80) }}
-        className={`bg-brand-surface/80 backdrop-blur-3xl border-r border-white/5 flex flex-col sticky top-0 h-screen z-50 shrink-0 overflow-hidden ${!isSidebarOpen && window.innerWidth < 1024 ? 'hidden md:flex' : ''}`}
+        animate={{ width: isSidebarOpen ? 260 : 0 }}
+        className={`bg-card border-r border-border flex flex-col sticky top-0 h-screen z-50 shrink-0 overflow-hidden transition-all duration-300 ${!isSidebarOpen && 'hidden md:flex'}`}
       >
-        <div className="p-4 flex items-center justify-between">
-          {isSidebarOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-2"
-            >
-              <div className="w-7 h-7 bg-emerald-500 rounded-none flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                <ShieldCheck className="text-white w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-bold text-sm tracking-tight block leading-none text-white">Nexo</span>
-                <span className="text-[8px] uppercase tracking-[0.15em] text-emerald-500 font-bold">SGFM - Sistema de Gestão</span>
-              </div>
-            </motion.div>
-          )}
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-1.5 hover:bg-white/5 rounded-none transition-colors text-gray-500 hover:text-white"
-          >
-            {isSidebarOpen ? <X size={14} /> : <Menu size={14} />}
-          </button>
+        <div className="p-4 flex items-center justify-between h-14 shrink-0 px-6">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary text-primary-foreground shadow-sm">
+                <ShieldCheck className="w-5 h-5" />
+             </div>
+             <div className="flex flex-col">
+                <span className="font-bold text-sm tracking-tight">Nexo SGFM</span>
+                <span className="text-[10px] text-muted-foreground font-medium truncate w-24">Enterprise Edition</span>
+             </div>
+          </div>
         </div>
 
-        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => {
-            if (item.permission && !item.permission(user?.perfil)) return null;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setSelectedIncidentId(null);
-                }}
-                className={`sidebar-item w-full ${isActive ? 'active' : ''} ${!isSidebarOpen ? 'justify-center px-0' : ''}`}
-                title={item.label}
-              >
-                <item.icon size={16} />
-                {isSidebarOpen && <span className="font-medium text-[12px] tracking-wide">{item.label}</span>}
-              </button>
-            );
-          })}
+        <div className="px-4 mb-2">
+           <Button className="w-full justify-start gap-2 h-9 font-bold text-xs shadow-sm" variant="default">
+              <div className="bg-primary-foreground text-primary rounded-sm p-0.5">
+                 <X size={10} className="rotate-45" />
+              </div>
+              Rápido Criar
+           </Button>
+        </div>
+
+        <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto custom-scrollbar">
+          {navGroups.map((group, idx) => (
+            <div key={idx} className="space-y-1">
+              {isSidebarOpen && <h3 className="px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-2">{group.label}</h3>}
+              {group.items.map((item) => {
+                if (item.permission && !item.permission(user?.perfil)) return null;
+                const isActive = activeTab === item.id;
+                return (
+                  <Button
+                    key={item.id}
+                    variant={isActive ? "secondary" : "ghost"}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setSelectedIncidentId(null);
+                    }}
+                    className={`w-full justify-start h-9 px-2 gap-3 ${isActive ? 'bg-secondary font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-transparent'}`}
+                  >
+                    <item.icon size={16} className={isActive ? 'text-foreground' : 'text-muted-foreground/70'} />
+                    {isSidebarOpen && <span className="text-sm">{item.label}</span>}
+                  </Button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
-        <div className="p-3 border-t border-brand-border">
-          <div className={`flex items-center gap-2 p-2 rounded-none bg-white/5 mb-2 ${!isSidebarOpen && 'justify-center'}`}>
-            <div className="w-7 h-7 rounded-none bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold shadow-lg text-[10px]">
-              {user?.nome?.charAt(0) || 'U'}
+        <div className="p-4 border-t border-border mt-auto">
+          <div className="flex items-center gap-3 px-2 py-2 mb-2">
+            <Avatar className="h-8 w-8 border border-border">
+              <AvatarFallback className="text-[10px] font-bold bg-muted uppercase">{(user?.nome || 'U').slice(0, 2)}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+               <p className="text-xs font-bold truncate leading-none mb-1">{user?.nome}</p>
+               <p className="text-[10px] text-muted-foreground truncate">{user?.perfil}</p>
             </div>
-            {isSidebarOpen && (
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold truncate text-white leading-tight">{user?.nome}</p>
-                <div className="flex items-center gap-1">
-                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="text-[8px] uppercase font-bold text-gray-500 tracking-wider">{user?.perfil}</span>
-                </div>
-              </div>
-            )}
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-muted-foreground hover:text-destructive">
+               <LogOut size={14} />
+            </Button>
           </div>
-          <button
-            onClick={handleLogout}
-            className={`sidebar-item w-full text-red-400 hover:bg-red-400/5 hover:text-red-400 py-1.5 ${!isSidebarOpen ? 'justify-center px-0' : ''}`}
-          >
-            <LogOut size={16} />
-            {isSidebarOpen && <span className="font-medium text-[12px]">Terminar Sessão</span>}
-          </button>
         </div>
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
-        <header className="h-14 border-b border-white/5 flex items-center justify-between px-6 shrink-0 relative z-20 bg-brand-surface/40 backdrop-blur-xl">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+        <header className="h-14 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-6 shrink-0 z-20 sticky top-0">
           <div className="flex items-center gap-4">
-            <h1 className="text-xs font-bold tracking-tight text-white">
-              {selectedIncidentId ? 'Protocolo de Incidente' : navItems.find(i => i.id === activeTab)?.label}
-            </h1>
-            <div className="h-3 w-px bg-brand-border"></div>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-mono text-gray-500 uppercase tracking-widest">Estado:</span>
-              <span className="text-[9px] font-mono text-emerald-500 uppercase tracking-widest font-bold">Operacional</span>
+            <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="h-8 w-8 md:hidden">
+              <Menu size={18} />
+            </Button>
+            
+            {/* Breadcrumb style header */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
+               <span>Plataforma</span>
+               <span className="text-xs">/</span>
+               <span className="text-foreground font-semibold">
+                  {selectedIncidentId ? 'Protocolo de Incidente' : currentItem?.label}
+               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative hidden md:block">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600 w-3 h-3" />
-              <input
+            <div className="relative hidden lg:flex items-center">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
                 type="text"
-                placeholder="Pesquisa Global..."
-                className="bg-white/5 border border-brand-border rounded-none pl-8 pr-3 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30 w-48 transition-all"
+                placeholder="Busca rápida (Alt+K)"
+                className="pl-9 h-8 w-64 bg-muted/30 border-none shadow-none focus-visible:ring-1 focus-visible:ring-border"
               />
             </div>
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 text-gray-400 hover:text-white transition-colors"
-            >
+            
+            <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-8 w-8 text-muted-foreground hover:text-foreground">
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            </Button>
+
             <div className="relative">
-              <button
+              <Button
+                variant="ghost" 
+                size="icon"
                 onClick={() => {
                   setIsNotifOpen(!isNotifOpen);
                   if (!isNotifOpen) markNotificationsRead();
                 }}
-                className="p-1.5 text-gray-400 hover:text-white transition-colors relative group"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground relative"
               >
                 <Bell size={16} />
                 {notifications.some(n => !n.lida) && (
-                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-emerald-500 rounded-full border border-brand-surface"></span>
+                  <span className="absolute top-1.5 right-2 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
                 )}
-              </button>
+              </Button>
 
               <AnimatePresence>
                 {isNotifOpen && (
@@ -341,27 +329,26 @@ export default function App() {
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-80 bg-brand-surface border border-brand-border rounded-none shadow-2xl z-50 overflow-hidden"
+                      className="absolute right-0 mt-2 w-80 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden"
                     >
-                      <div className="p-4 border-b border-brand-border flex items-center justify-between bg-white/[0.02]">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Notificações</span>
-                        <span className="text-[8px] font-mono text-emerald-500 uppercase tracking-widest">Tempo Real</span>
+                      <div className="p-3 border-b border-border flex items-center justify-between bg-muted/30">
+                        <span className="text-xs font-semibold text-foreground">Notificações</span>
                       </div>
-                      <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                      <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
                         {notifications.length > 0 ? notifications.map((n, i) => (
-                          <div key={i} className={`p-4 border-b border-brand-border last:border-0 hover:bg-white/[0.02] transition-colors ${!n.lida ? 'bg-emerald-500/[0.02]' : ''}`}>
+                          <div key={i} className={`p-3 border-b border-border last:border-0 hover:bg-muted/50 transition-colors ${!n.lida ? 'bg-primary/5' : ''}`}>
                             <div className="flex items-start gap-3">
-                              <div className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${!n.lida ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                              <div className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${!n.lida ? 'bg-primary' : 'bg-muted'}`}></div>
                               <div>
-                                <p className="text-[11px] font-bold text-white mb-0.5">{n.titulo}</p>
-                                <p className="text-[10px] text-gray-500 leading-relaxed">{n.mensagem}</p>
+                                <p className="text-sm font-medium text-foreground mb-1 leading-none">{n.titulo}</p>
+                                <p className="text-xs text-muted-foreground leading-snug">{n.mensagem}</p>
                               </div>
                             </div>
                           </div>
                         )) : (
-                          <div className="p-8 text-center opacity-20">
-                            <Bell size={24} className="mx-auto mb-2" />
-                            <p className="text-[10px] font-bold uppercase tracking-widest">Sem notificações</p>
+                          <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
+                            <Bell size={24} className="mb-3 opacity-20" />
+                            <p className="text-sm font-medium">Sem notificações recentes</p>
                           </div>
                         )}
                       </div>
@@ -370,10 +357,12 @@ export default function App() {
                 )}
               </AnimatePresence>
             </div>
-            <div className="h-3 w-px bg-brand-border"></div>
-            <div className="flex items-center gap-2 text-gray-500">
-              <span className="text-[9px] font-mono">v2.5.0</span>
-            </div>
+            
+            <div className="h-4 w-px bg-border mx-1"></div>
+            <Button variant="outline" size="sm" className="h-8 text-xs font-bold gap-2">
+               <ShieldCheck size={14} />
+               Verificar
+            </Button>
           </div>
         </header>
 
@@ -384,7 +373,8 @@ export default function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.15 }}
+              className="h-full max-w-[1400px] mx-auto"
             >
               {selectedIncidentId ? (
                 <IncidentDetail id={selectedIncidentId} onBack={() => setSelectedIncidentId(null)} />
