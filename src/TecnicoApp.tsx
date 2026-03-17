@@ -107,32 +107,41 @@ export default function TecnicoApp() {
 
     return (
         <div className="min-h-screen bg-[#080d18] flex flex-col max-w-md mx-auto relative overflow-hidden">
+            {/* Mesh Background */}
+            <div className="absolute inset-0 z-0 pointer-events-none">
+                <div className="absolute top-[-5%] right-[-5%] w-[60%] h-[60%] bg-emerald-500/5 rounded-full blur-[100px] animate-pulse"></div>
+                <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-blue-500/5 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }}></div>
+            </div>
+
             {/* Top bar */}
-            <div className="flex items-center justify-between px-5 pt-safe-top pt-5 pb-4 border-b border-white/5 flex-shrink-0 bg-[#080d18]/80 backdrop-blur-xl z-20">
+            <div className="flex items-center justify-between px-6 pt-safe-top pt-6 pb-4 border-b border-white/5 flex-shrink-0 bg-[#080d18]/40 backdrop-blur-xl z-20 relative">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-none bg-emerald-500 flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20">
+                    <div className="w-9 h-9 bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 font-black shadow-lg shadow-emerald-500/10">
                         {user.nome?.charAt(0) || 'T'}
                     </div>
                     <div>
-                        <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest leading-none">Portal do Técnico</p>
-                        <p className="text-sm font-black text-white mt-0.5">{user.nome}</p>
+                        <p className="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.2em] leading-none mb-1">Painel do Técnico</p>
+                        <p className="text-sm font-black text-white tracking-tight">{user.nome}</p>
                     </div>
                 </div>
-                <button onClick={handleLogout} className="p-2 rounded-none bg-white/5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all">
+                <button 
+                  onClick={handleLogout} 
+                  className="p-2.5 bg-white/5 text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all border border-white/5 active:scale-95"
+                >
                     <LogOut size={16} />
                 </button>
             </div>
 
             {/* Content */}
-            <main className="flex-1 overflow-y-auto custom-scrollbar pb-28 relative z-10">
+            <main className="flex-1 overflow-hidden relative z-10">
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={activeTab + (selectedIncidentId || '')}
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="p-4"
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 1.02 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="h-full flex flex-col p-4 overflow-y-auto no-scrollbar"
                     >
                         {activeTab === 'dashboard' && <TecnicoDashboard user={user} onNavigate={setActiveTab} onSelectIncident={setSelectedIncidentId} />}
                         {activeTab === 'incidents' && <TecnicoIncidents onSelectIncident={setSelectedIncidentId} />}
@@ -144,7 +153,7 @@ export default function TecnicoApp() {
             </main>
 
             {/* Bottom nav */}
-            <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#0a0f1a]/95 backdrop-blur-xl border-t border-white/8 px-2 pt-3 pb-safe-bottom pb-4 flex items-center justify-around z-50">
+            <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#0a0f1a]/80 backdrop-blur-2xl border-t border-white/5 px-2 pt-3 pb-safe-bottom pb-5 flex items-center justify-around z-50">
                 {NAV.map(({ id, icon: Icon, label }) => {
                     const active = activeTab === id;
                     return (
@@ -154,16 +163,25 @@ export default function TecnicoApp() {
                                 setActiveTab(id);
                                 setSelectedIncidentId(null);
                             }}
-                            className="flex flex-col items-center gap-1 flex-1 relative"
+                            className="flex flex-col items-center gap-1.5 flex-1 relative group"
                         >
-                            <div className={`p-2 rounded-none transition-all ${active ? 'bg-emerald-500/15' : ''}`}>
-                                <Icon size={20} className={active ? 'text-emerald-400' : 'text-gray-600'} />
+                            <div className={`p-2.5 transition-all duration-300 relative ${active ? 'text-emerald-400' : 'text-gray-500 group-hover:text-gray-300'}`}>
+                                {active && (
+                                  <motion.div 
+                                    layoutId="nav-bg-tecnico"
+                                    className="absolute inset-0 bg-emerald-500/10 border border-emerald-500/20"
+                                  />
+                                )}
+                                <Icon size={20} className="relative z-10" />
                             </div>
-                            <span className={`text-[8px] font-black uppercase tracking-wider transition-all ${active ? 'text-emerald-400' : 'text-gray-700'}`}>
+                            <span className={`text-[8px] font-black uppercase tracking-[0.15em] transition-colors duration-300 ${active ? 'text-emerald-400' : 'text-gray-600 group-hover:text-gray-400'}`}>
                                 {label}
                             </span>
                             {active && (
-                                <motion.div layoutId="nav-indicator-tecnico" className="absolute -top-1 w-6 h-0.5 bg-emerald-500 rounded-none" />
+                                <motion.div 
+                                  layoutId="nav-indicator-tecnico" 
+                                  className="absolute -top-3 w-6 h-0.5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" 
+                                />
                             )}
                         </button>
                     );

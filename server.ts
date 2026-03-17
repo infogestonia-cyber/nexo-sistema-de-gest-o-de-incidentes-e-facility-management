@@ -1174,6 +1174,29 @@ async function startServer() {
     res.json(data);
   });
 
+  app.get("/api/company-info", authenticate, async (req, res) => {
+    const { data, error } = await supabase.from('company_info').select('*').limit(1).single();
+    if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
+    res.json(data || {});
+  });
+
+  app.post("/api/company-info", authenticate, async (req, res) => {
+    if ((req as any).user.perfil !== 'Administrador') return res.status(403).json({ error: 'Acesso negado' });
+    const { nome, endereco, telefone, email, logotipo_url } = req.body;
+    
+    const { data: existing } = await supabase.from('company_info').select('id').limit(1).single();
+    
+    if (existing) {
+      const { data, error } = await supabase.from('company_info').update({ nome, endereco, telefone, email, logotipo_url, updated_at: new Date().toISOString() }).eq('id', existing.id).select('*').single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.json(data);
+    } else {
+      const { data, error } = await supabase.from('company_info').insert([{ nome, endereco, telefone, email, logotipo_url }]).select('*').single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.json(data);
+    }
+  });
+
   app.get("/api/maintenance-plans", authenticate, async (req, res) => {
     try {
       const { data, error } = await supabase.from('maintenance_plans').select('*, assets(nome), profiles!responsavel_id(nome)');

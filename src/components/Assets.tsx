@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Cpu, MapPin, Calendar, Activity, Search, Filter, MoreVertical, LayoutGrid, List as ListIcon, X, Zap, ArrowUpDown } from 'lucide-react';
+import { Plus, Cpu, MapPin, Calendar, Activity, Search, Filter, MoreVertical, LayoutGrid, List as ListIcon, X, Zap, ArrowUpDown, Download, FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ASSET_CATEGORIES } from '../constants';
 import DigitalTwin from './DigitalTwin';
 import { canCreateAssets } from '../utils/permissions';
+import * as XLSX from 'xlsx';
 
 // --- shadcn UI imports ---
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
@@ -16,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { Separator } from './ui/separator';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from './ui/dropdown-menu';
 
 export default function Assets({ 
   propertyId, 
@@ -36,6 +38,11 @@ export default function Assets({
   const [submitting, setSubmitting] = useState(false);
   const [dynamicCategories, setDynamicCategories] = useState<string[]>(ASSET_CATEGORIES);
   const [search, setSearch] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' | null }>({ key: '', direction: null });
+  const [assetFilter, setAssetFilter] = useState<'all' | 'active' | 'obsolete'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+  const [companyInfo, setCompanyInfo] = useState<any>(null);
   
   const [user] = useState<any>(() => {
     try {
@@ -61,6 +68,7 @@ export default function Assets({
     fetchAssets();
     fetchProperties();
     fetchCategories();
+    fetchCompanyInfo();
   }, []);
 
   useEffect(() => {
@@ -127,6 +135,15 @@ export default function Assets({
     }
   };
 
+  const fetchCompanyInfo = async () => {
+    try {
+      const res = await fetch('/api/company-info', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) setCompanyInfo(await res.json());
+    } catch (e) { console.error(e); }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -165,13 +182,117 @@ export default function Assets({
     }
   };
 
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const exportToCSV = () => {
+    const reportTitle = "Relatório de Inventário de Ativos";
+    const extractionDate = new Date().toLocaleString();
+    
+    // Create an array of arrays representing the grid
+    // Row indices: 1-indexed for clarity
+    const grid: any[][] = [];
+
+    // Ensure empty rows are represented by empty arrays
+    for (let i = 0; i < 26; i++) grid[i] = [];
+
+    // Row 2 (index 1): Column B (index 1) = Company Name
+    grid[1][1] = companyInfo?.nome || 'Platinum Group';
+    
+    // Row 3 (index 2): Column B = Address
+    grid[2][1] = companyInfo?.endereco || 'Av. Mao-Tsé-Tung, 11ESQ, Maputo';
+    
+    // Row 4 (index 3): Column B = Phone
+    grid[3][1] = `Telefone: ${companyInfo?.telefone || '+258 84 000 0000'}`;
+    
+    // Row 5 (index 4): Column B = Date
+    grid[4][1] = `Data de Extracção: ${extractionDate}`;
+
+    // Row 8 (index 7): Centered title
+    // In AOC, "centering" for CSV/XLSX usually means placing in a middle column or merging
+    // We'll place it in Column D/E area (index 3/4) to appear centered relative to a 6-col table
+    grid[7][3] = reportTitle;
+
+    // Row 10 (index 9): Headers starting from Column B
+    grid[9] = [
+      '', // Column A
+      'Nome', 
+      'Categoria', 
+      'Localização', 
+      'Data de Instalação', 
+      'Estado (Risco)', 
+      'Status'
+    ];
+
+    // Rows 11+ (index 10+): Data starting from Column B
+    sortedAndFilteredAssets.forEach((a, idx) => {
+      grid[10 + idx] = [
+        '', // Column A
+        a.nome,
+        a.categoria,
+        a.property_name,
+        a.data_instalacao,
+        a.probabilidade_falha,
+        a.obsoleto ? 'Obsoleto' : 'Ativo'
+      ];
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(grid);
+    
+    // Column widths (A: index 0, B: index 1, etc.)
+    worksheet['!cols'] = [
+      { wch: 5 },  // A (Narrow)
+      { wch: 35 }, // B (Nome)
+      { wch: 20 }, // C (Categoria)
+      { wch: 30 }, // D (Localização)
+      { wch: 18 }, // E (Data)
+      { wch: 15 }, // F (Risco)
+      { wch: 10 }  // G (Status)
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Ativos");
+    XLSX.writeFile(workbook, `Inventario_Ativos_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+
   const filteredAssets = (propertyId
     ? assets.filter(a => String(a.property_id) === String(propertyId))
-    : assets).filter(a => 
-      !search || 
-      a.nome?.toLowerCase().includes(search.toLowerCase()) || 
-      a.categoria?.toLowerCase().includes(search.toLowerCase())
-    );
+    : assets).filter(a => {
+      const matchesSearch = !search || 
+        a.nome?.toLowerCase().includes(search.toLowerCase()) || 
+        a.categoria?.toLowerCase().includes(search.toLowerCase());
+      
+      const matchesObsolescence = 
+        assetFilter === 'all' ? true :
+        assetFilter === 'active' ? !a.obsoleto :
+        a.obsoleto;
+
+      return matchesSearch && matchesObsolescence;
+    });
+
+  const sortedAndFilteredAssets = [...filteredAssets].sort((a, b) => {
+    if (!sortConfig.key || !sortConfig.direction) return 0;
+    
+    const aValue = a[sortConfig.key]?.toString().toLowerCase() || '';
+    const bValue = b[sortConfig.key]?.toString().toLowerCase() || '';
+    
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const totalPages = Math.ceil(sortedAndFilteredAssets.length / itemsPerPage);
+  const paginatedAssets = sortedAndFilteredAssets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, assetFilter, sortConfig]);
 
   if (selectedAsset) {
     return <DigitalTwin asset={selectedAsset} onBack={handleBack} />;
@@ -215,6 +336,39 @@ export default function Assets({
               <ListIcon size={13} />
             </Button>
           </div>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 gap-2 text-xs border-border/50 bg-muted/5 hover:bg-muted/10 transition-colors">
+                <Download size={14} className="text-muted-foreground" />
+                <span>Exportar</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl p-1">
+              <DropdownMenuLabel className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 px-2 py-1.5">Formato de Ficheiro</DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-border/30" />
+              <DropdownMenuItem onClick={exportToCSV} className="flex items-center gap-2 text-xs font-medium cursor-pointer focus:bg-primary/5 focus:text-primary py-2 px-2 rounded-sm transition-colors">
+                <FileSpreadsheet size={14} className="text-emerald-500" />
+                <span>Exportar CSV (.csv)</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Separator orientation="vertical" className="h-4 bg-border/50" />
+
+          <Select value={assetFilter} onValueChange={(val: any) => setAssetFilter(val)}>
+            <SelectTrigger className="h-9 w-32 text-[10px] uppercase font-bold tracking-widest bg-muted/20 border-border/50 focus:ring-1 focus:ring-primary/20">
+              <div className="flex items-center gap-2">
+                <Filter size={12} className="text-muted-foreground/50" />
+                <SelectValue />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-[10px] uppercase font-bold">Todos</SelectItem>
+              <SelectItem value="active" className="text-[10px] uppercase font-bold">Ativos</SelectItem>
+              <SelectItem value="obsolete" className="text-[10px] uppercase font-bold text-rose-500">Obsoletos</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         {canCreateAssets(user.perfil) && (
           <Button
@@ -229,7 +383,7 @@ export default function Assets({
 
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredAssets.map((asset) => (
+          {paginatedAssets.map((asset) => (
             <Card 
               key={asset.id}
               onClick={() => setSelectedAsset(asset)}
@@ -290,15 +444,47 @@ export default function Assets({
           <Table>
             <TableHeader className="bg-muted/20">
               <TableRow className="hover:bg-transparent border-border/50 border-b">
-                <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest px-4">Ativo</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Categoria</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Localização</TableHead>
-                <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Estado (Risco)</TableHead>
+                <TableHead 
+                  className="text-[10px] uppercase font-bold h-10 tracking-widest px-4 cursor-pointer hover:text-primary transition-colors group/th"
+                  onClick={() => handleSort('nome')}
+                >
+                  <div className="flex items-center gap-2">
+                    Ativo
+                    <ArrowUpDown size={10} className={`transition-opacity ${sortConfig.key === 'nome' ? 'opacity-100' : 'opacity-0 group-hover/th:opacity-50'}`} />
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="text-[10px] uppercase font-bold h-10 tracking-widest cursor-pointer hover:text-primary transition-colors group/th"
+                   onClick={() => handleSort('categoria')}
+                >
+                  <div className="flex items-center gap-2">
+                    Categoria
+                    <ArrowUpDown size={10} className={`transition-opacity ${sortConfig.key === 'categoria' ? 'opacity-100' : 'opacity-0 group-hover/th:opacity-50'}`} />
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="text-[10px] uppercase font-bold h-10 tracking-widest cursor-pointer hover:text-primary transition-colors group/th"
+                  onClick={() => handleSort('property_name')}
+                >
+                  <div className="flex items-center gap-2">
+                    Localização
+                    <ArrowUpDown size={10} className={`transition-opacity ${sortConfig.key === 'property_name' ? 'opacity-100' : 'opacity-0 group-hover/th:opacity-50'}`} />
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="text-[10px] uppercase font-bold h-10 tracking-widest cursor-pointer hover:text-primary transition-colors group/th"
+                  onClick={() => handleSort('probabilidade_falha')}
+                >
+                  <div className="flex items-center gap-2">
+                    Estado (Risco)
+                    <ArrowUpDown size={10} className={`transition-opacity ${sortConfig.key === 'probabilidade_falha' ? 'opacity-100' : 'opacity-0 group-hover/th:opacity-50'}`} />
+                  </div>
+                </TableHead>
                 <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest text-right pr-4">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAssets.map((asset) => (
+              {paginatedAssets.map((asset) => (
                 <TableRow 
                   key={asset.id} 
                   className="cursor-pointer group h-12"
@@ -458,6 +644,50 @@ export default function Assets({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Pagination Control */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-6 border-t border-border/30">
+          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50">
+            Mostrando {(currentPage - 1) * itemsPerPage + 1} a {Math.min(currentPage * itemsPerPage, sortedAndFilteredAssets.length)} de {sortedAndFilteredAssets.length} ativos
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="h-8 px-3 gap-1.5 text-[10px] uppercase font-bold tracking-tighter border-border/50 hover:bg-muted/10"
+            >
+              <ChevronLeft size={12} /> Anterior
+            </Button>
+            <div className="flex items-center gap-1 mx-2">
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`w-7 h-7 rounded-md text-[10px] font-bold transition-all ${
+                    currentPage === i + 1 
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' 
+                      : 'text-muted-foreground hover:bg-muted/10'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="h-8 px-3 gap-1.5 text-[10px] uppercase font-bold tracking-tighter border-border/50 hover:bg-muted/10"
+            >
+              Próximo <ChevronRight size={12} />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
