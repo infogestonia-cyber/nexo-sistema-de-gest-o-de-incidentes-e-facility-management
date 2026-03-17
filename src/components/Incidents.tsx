@@ -196,20 +196,20 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
   return (
     <div className="space-y-6">
       {/* Search and Filters Header */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-border pb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-3.5 h-3.5" />
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-border/50 pb-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 w-3.5 h-3.5 group-focus-within:text-primary transition-colors" />
             <Input
-              placeholder="Pesquisar incidentes..."
+              placeholder="Pesquisar protocolo ou local..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-9 w-64 h-9 text-xs bg-muted/20 border-border"
+              className="pl-9 w-64 h-9 text-xs bg-muted/10 border-border/50 focus-visible:ring-1 focus-visible:ring-primary/20 transition-all shadow-none"
             />
           </div>
           
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-40 h-9 text-xs">
+            <SelectTrigger className="w-36 h-9 text-xs bg-muted/10 border-border/50 shadow-none">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -222,11 +222,11 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
           </Select>
 
           <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-            <SelectTrigger className="w-40 h-9 text-xs">
+            <SelectTrigger className="w-36 h-9 text-xs bg-muted/10 border-border/50 shadow-none">
               <SelectValue placeholder="Severidade" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas Severidades</SelectItem>
+              <SelectItem value="all">Severidade</SelectItem>
               <SelectItem value="Crítico">Crítico</SelectItem>
               <SelectItem value="Alto">Alto</SelectItem>
               <SelectItem value="Médio">Médio</SelectItem>
@@ -234,20 +234,23 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
             </SelectContent>
           </Select>
 
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => { setSearch(''); setFilterStatus('all'); setFilterSeverity('all'); }}>
-             <XIcon size={14} className="text-muted-foreground" />
-          </Button>
+          {(search || filterStatus !== 'all' || filterSeverity !== 'all') && (
+            <Button variant="ghost" size="sm" className="h-9 px-2 text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 gap-2" onClick={() => { setSearch(''); setFilterStatus('all'); setFilterSeverity('all'); }}>
+               <XIcon size={14} />
+               <span className="text-[10px] font-bold uppercase tracking-tight">Limpar</span>
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-2 text-xs" onClick={handleExport}>
-            <Download size={14} />
-            Exportar CSV
+          <Button variant="outline" size="sm" className="h-9 gap-2 text-xs font-semibold bg-muted/5 border-border/50 hover:bg-muted/20" onClick={handleExport}>
+            <Download size={14} className="text-muted-foreground" />
+            Exportar dados
           </Button>
           {canReportIncidents(currentUser.perfil) && (
-            <Button size="sm" className="h-9 gap-2 text-xs font-bold" onClick={() => setIsModalOpen(true)}>
+            <Button size="sm" className="h-9 gap-2 text-xs font-bold shadow-lg shadow-primary/10" onClick={() => setIsModalOpen(true)}>
               <Plus size={16} />
-              Reportar Incidente
+              Criar Ocorrência
             </Button>
           )}
         </div>
@@ -256,35 +259,37 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       {/* Stats Quick View */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Registos', value: incidents.length, icon: Activity, color: 'text-foreground' },
-          { label: 'Em Aberto', value: incidents.filter(i => i.estado === 'Novo' || i.estado === 'Novo').length, icon: AlertCircle, color: 'text-destructive' },
-          { label: 'Em Resolução', value: incidents.filter(i => i.estado === 'Em Progresso').length, icon: Clock, color: 'text-warning' },
-          { label: 'Concluídos', value: incidents.filter(i => i.estado === 'Concluido').length, icon: CheckCircle2, color: 'text-success' },
+          { label: 'Total Registos', value: incidents.length, icon: Activity, color: 'text-blue-500', bgColor: 'bg-blue-500/10' },
+          { label: 'Em Aberto', value: incidents.filter(i => i.estado === 'Novo').length, icon: AlertCircle, color: 'text-rose-500', bgColor: 'bg-rose-500/10' },
+          { label: 'Em Resolução', value: incidents.filter(i => i.estado === 'Em Progresso').length, icon: Clock, color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
+          { label: 'Concluídos', value: incidents.filter(i => i.estado === 'Concluido').length, icon: CheckCircle2, color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
         ].map((s, i) => (
-          <Card key={i} className="shadow-none border-border">
+          <Card key={i} className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine group hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-4 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{s.label}</p>
-                <p className={`text-xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+                <p className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest">{s.label}</p>
+                <p className={`text-xl font-bold mt-1 tracking-tighter`}>{s.value}</p>
               </div>
-              <s.icon size={20} className="text-muted-foreground/30" />
+              <div className={`p-2 rounded-lg ${s.bgColor} ${s.color} transition-transform group-hover:scale-110 duration-300`}>
+                 <s.icon size={16} />
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
       {/* Main Table */}
-      <Card className="shadow-none border-border overflow-hidden">
+      <Card className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine overflow-hidden">
         <Table>
-          <TableHeader className="bg-muted/30">
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-24 text-[10px] uppercase font-bold h-10">ID</TableHead>
-              <TableHead className="text-[10px] uppercase font-bold h-10">Data</TableHead>
-              <TableHead className="text-[10px] uppercase font-bold h-10">Status</TableHead>
-              <TableHead className="text-[10px] uppercase font-bold h-10">Severidade</TableHead>
-              <TableHead className="text-[10px] uppercase font-bold h-10">Descrição & Unidade</TableHead>
-              <TableHead className="text-[10px] uppercase font-bold h-10">Responsável</TableHead>
-              <TableHead className="w-12 text-right h-10"></TableHead>
+          <TableHeader className="bg-muted/20">
+            <TableRow className="hover:bg-transparent border-border/50 border-b">
+              <TableHead className="w-24 text-[10px] uppercase font-bold h-10 tracking-widest px-4">Protocolo</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Abertura</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Estado</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Severidade</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Descrição & Unidade</TableHead>
+              <TableHead className="text-[10px] uppercase font-bold h-10 tracking-widest">Responsável</TableHead>
+              <TableHead className="w-12 text-right h-10 pr-4"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -294,39 +299,56 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                 className="cursor-pointer group h-14"
                 onClick={() => onSelectIncident(incident.id)}
               >
-                <TableCell className="font-mono text-[10px] text-muted-foreground">
-                  #{incident.id?.toString().slice(-6).toUpperCase()}
+                <TableCell className="font-mono text-[10px] text-muted-foreground/80">
+                  <span className="bg-muted px-2 py-0.5 rounded-sm">
+                    #{incident.id?.toString().slice(-6).toUpperCase()}
+                  </span>
                 </TableCell>
-                <TableCell className="text-xs whitespace-nowrap">
+                <TableCell className="text-[10px] font-semibold text-muted-foreground/60 whitespace-nowrap">
                   {safeFormat(incident.created_at, 'dd MMM, HH:mm')}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={getStatusVariant(incident.estado) as any} className="text-[9px] h-4 uppercase font-bold">
+                  <Badge 
+                    variant="outline" 
+                    className={`text-[9px] h-4 uppercase font-bold border-none ${
+                       incident.estado === 'Novo' ? 'bg-rose-500/15 text-rose-500' :
+                       incident.estado === 'Em Progresso' ? 'bg-blue-500/15 text-blue-500' :
+                       incident.estado === 'Concluido' ? 'bg-emerald-500/15 text-emerald-500' :
+                       'bg-zinc-500/15 text-zinc-500'
+                    }`}
+                  >
                     {incident.estado}
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={getSeverityVariant(incident.severidade) as any} className="text-[9px] h-4 uppercase font-bold">
+                  <Badge 
+                    variant="outline" 
+                    className={`text-[9px] h-4 uppercase font-bold border-none ${
+                       incident.severidade === 'Crítico' || incident.severidade === 'Alto' ? 'bg-rose-500/10 text-rose-500' :
+                       incident.severidade === 'Médio' ? 'bg-amber-500/10 text-amber-500' :
+                       'bg-emerald-500/10 text-emerald-500'
+                    }`}
+                  >
                     {incident.severidade}
                   </Badge>
                 </TableCell>
                 <TableCell className="min-w-[250px]">
                   <div className="flex flex-col">
-                    <span className="text-xs font-semibold truncate group-hover:text-primary transition-colors">
+                    <span className="text-xs font-bold truncate group-hover:text-primary transition-colors tracking-tight">
                       {incident.descricao}
                     </span>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-1 mt-0.5">
-                      <Activity size={10} /> {incident.property_name}
+                    <span className="text-[10px] text-muted-foreground/50 font-bold uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
+                      <div className="h-1 w-1 rounded-full bg-border" /> {incident.property_name}
                     </span>
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden shrink-0">
-                      {incident.responsavel_nome ? <UserIcon size={10} className="text-muted-foreground" /> : <Clock size={10} className="text-muted-foreground/30" />}
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-zinc-800 border border-border/50 flex items-center justify-center overflow-hidden shrink-0">
+                      {incident.responsavel_nome ? <UserIcon size={10} className="text-zinc-400" /> : <Clock size={10} className="text-zinc-600" />}
                     </div>
-                    <span className="text-xs text-muted-foreground truncate max-w-[120px]">
-                      {incident.responsavel_nome || 'Livre'}
+                    <span className="text-[10px] font-bold text-muted-foreground/70 truncate max-w-[120px] uppercase tracking-tight">
+                      {incident.responsavel_nome || 'Aguardando'}
                     </span>
                   </div>
                 </TableCell>
@@ -371,21 +393,28 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
 
       {/* New Incident Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Reportar Incidente</DialogTitle>
-            <DialogDescription>Registar uma nova ocorrência técnica no sistema de gestão.</DialogDescription>
+        <DialogContent className="max-w-xl bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl">
+          <DialogHeader className="space-y-1">
+            <div className="flex items-center gap-3">
+               <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <AlertCircle size={20} />
+               </div>
+               <div>
+                  <DialogTitle className="text-lg font-bold tracking-tight">Reportar Ocorrência</DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground/60">Registar uma nova falha técnica ou pedido de assistência.</DialogDescription>
+               </div>
+            </div>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-6 pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Unidade / Propriedade</Label>
+          <form onSubmit={handleSubmit} className="space-y-6 pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-2.5">
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 ml-1">Localização</Label>
                 <Select 
                   value={formData.property_id} 
                   onValueChange={(val) => setFormData({ ...formData, property_id: val })}
                   required
                 >
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger className="h-10 bg-muted/10 border-border/50 transition-all focus:ring-1 focus:ring-primary/20">
                     <SelectValue placeholder="Selecione a unidade..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -393,13 +422,13 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo (Opcional)</Label>
+              <div className="space-y-2.5">
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 ml-1">Ativo Relacionado</Label>
                 <Select 
                   value={formData.asset_id} 
                   onValueChange={(val) => setFormData({ ...formData, asset_id: val })}
                 >
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger className="h-10 bg-muted/10 border-border/50 transition-all focus:ring-1 focus:ring-primary/20">
                     <SelectValue placeholder="Vincular equipamento..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -410,13 +439,13 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Categoria</Label>
+              <div className="space-y-2.5">
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 ml-1">Categoria</Label>
                 <Select 
                   value={formData.categoria} 
                   onValueChange={(val) => setFormData({ ...formData, categoria: val })}
                 >
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger className="h-10 bg-muted/10 border-border/50 transition-all focus:ring-1 focus:ring-primary/20">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -424,13 +453,13 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Severidade</Label>
+              <div className="space-y-2.5">
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 ml-1">Severidade</Label>
                 <Select 
                   value={formData.severidade} 
                   onValueChange={(val) => setFormData({ ...formData, severidade: val })}
                 >
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger className="h-10 bg-muted/10 border-border/50 transition-all focus:ring-1 focus:ring-primary/20">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -443,21 +472,21 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Descrição do Problema</Label>
+            <div className="space-y-2.5">
+              <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 ml-1">Descrição</Label>
               <Textarea 
-                placeholder="Descreva o incidente em detalhe..." 
-                className="min-h-[100px]"
+                placeholder="Descreva o problema de forma clara e objetiva para o técnico..." 
+                className="min-h-[100px] bg-muted/10 border-border/50 focus-visible:ring-1 focus-visible:ring-primary/20 transition-all resize-none" 
                 required
                 value={formData.descricao}
                 onChange={e => setFormData({ ...formData, descricao: e.target.value })}
               />
             </div>
 
-            <DialogFooter className="gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="flex-1">
-                {submitting ? 'A registar...' : 'Confirmar Reporte'}
+            <DialogFooter className="gap-3 pt-4 border-t border-border/30">
+              <Button type="button" variant="ghost" className="flex-1 text-xs font-semibold h-10" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="flex-1 font-bold h-10 shadow-lg shadow-primary/20">
+                {submitting ? 'A registar...' : 'Enviar Reporte'}
               </Button>
             </DialogFooter>
           </form>

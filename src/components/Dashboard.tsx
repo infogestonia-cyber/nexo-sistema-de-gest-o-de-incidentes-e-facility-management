@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Activity, CheckCircle2, Clock, TrendingUp, TrendingDown,
-  Users, Zap, Shield, ArrowUpRight, MoreVertical, Cpu,
+  Users, Zap, Shield, ArrowUpRight, ArrowRight, MoreVertical, Cpu,
   Calendar, AlertCircle, AlertTriangle
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -42,35 +42,39 @@ function CommandCenterChart({ data }: { data: any[] }) {
               <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.3} />
           <XAxis 
             dataKey="estado" 
             axisLine={false} 
             tickLine={false} 
-            tick={{ fontSize: 10, fontWeight: 600, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 9, fontWeight: 700, fill: 'hsl(var(--muted-foreground))', opacity: 0.5 }}
             dy={10}
           />
           <YAxis 
             axisLine={false} 
             tickLine={false} 
-            tick={{ fontSize: 10, fontWeight: 600, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 9, fontWeight: 700, fill: 'hsl(var(--muted-foreground))', opacity: 0.5 }}
           />
           <Tooltip 
+            cursor={{ stroke: 'hsl(var(--primary) / 0.1)', strokeWidth: 2 }}
             contentStyle={{ 
               backgroundColor: 'hsl(var(--background))', 
               border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
-              fontSize: '12px'
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: '600',
+              boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
             }}
           />
           <Area 
             type="monotone" 
             dataKey="count" 
             stroke="hsl(var(--primary))" 
-            strokeWidth={2}
+            strokeWidth={2.5}
             fillOpacity={1} 
             fill="url(#colorCount)" 
             animationDuration={1500}
+            activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(var(--primary))' }}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -169,10 +173,10 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
   );
 
   const kpis = [
-    { label: 'Incidentes Ativos', value: stats.totalIncidents?.count || 0, icon: Activity, trend: '+12%', color: 'text-primary' },
-    { label: 'SLA Global', value: `${stats.slaCompliance || 0}%`, icon: Shield, trend: 'Estável', color: 'text-foreground' },
-    { label: 'Zonas Críticas', value: (stats.criticalAssets?.count || 0), icon: AlertTriangle, trend: 'Ativo', color: 'text-destructive' },
-    { label: 'Ativos Totais', value: (stats.totalAssets?.count || 0), icon: Zap, trend: 'Monitorizado', color: 'text-foreground' },
+    { label: 'Incidentes Ativos', value: stats.totalIncidents?.count || 0, icon: Activity, trend: '+12%', color: 'text-rose-500', bgColor: 'bg-rose-500/10' },
+    { label: 'SLA Global', value: `${stats.slaCompliance || 0}%`, icon: Shield, trend: 'Estável', color: 'text-blue-500', bgColor: 'bg-blue-500/10' },
+    { label: 'Zonas Críticas', value: (stats.criticalAssets?.count || 0), icon: AlertTriangle, trend: 'Ativo', color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
+    { label: 'Ativos Totais', value: (stats.totalAssets?.count || 0), icon: Zap, trend: 'Monitorizado', color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
   ];
 
   return (
@@ -180,18 +184,22 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
       {/* High-Fidelity KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map((kpi, i) => (
-          <Card key={i} className="shadow-sm border-border bg-card">
+          <Card key={i} className="shadow-sm border-border bg-card/50 backdrop-blur-sm group hover:border-primary/20 transition-all duration-300 card-shine">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{kpi.label}</CardTitle>
-               <kpi.icon size={14} className="text-muted-foreground/50" />
+               <CardTitle className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">{kpi.label}</CardTitle>
+               <div className={`p-2 rounded-lg ${kpi.bgColor} ${kpi.color} transition-transform group-hover:scale-110 duration-300`}>
+                  <kpi.icon size={16} />
+               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold tracking-tight">{kpi.value}</div>
-              <p className="text-[10px] font-semibold text-emerald-500 mt-1 flex items-center gap-1">
-                 <TrendingUp size={10} />
-                 {kpi.trend} 
-                 <span className="text-muted-foreground/40 font-medium ml-1">desde o último mês</span>
-              </p>
+              <div className="text-2xl font-bold tracking-tight mb-1">{kpi.value}</div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-[10px] font-bold h-4 border-emerald-500/20 bg-emerald-500/5 text-emerald-500 px-1">
+                   <TrendingUp size={10} className="mr-1" />
+                   {kpi.trend}
+                </Badge>
+                <span className="text-[10px] text-muted-foreground/50 font-medium">vs mês anterior</span>
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -199,15 +207,15 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Performance Graph */}
-        <Card className="lg:col-span-2 shadow-sm border-border">
-          <CardHeader className="flex flex-row items-center justify-between pb-6">
+        <Card className="lg:col-span-2 shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine">
+          <CardHeader className="flex flex-row items-center justify-between">
             <div className="space-y-1">
-              <CardTitle className="text-sm font-bold tracking-tight">Performance Operacional</CardTitle>
-              <CardDescription className="text-xs text-muted-foreground">Telemetria de incidentes processados em tempo real.</CardDescription>
+              <CardTitle className="text-sm font-bold tracking-tight">Desempenho da Rede</CardTitle>
+              <CardDescription className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50">Tempo de Resposta (ms)</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-               <Badge variant="secondary" className="text-[10px] font-bold h-5 uppercase">Live</Badge>
-               <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical size={14} /></Button>
+            <div className="flex gap-1">
+               <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+               <span className="text-[9px] font-bold text-emerald-500/80 uppercase">Live</span>
             </div>
           </CardHeader>
           <CardContent className="h-[300px] pl-2">
@@ -242,97 +250,127 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Activity Table */}
-        <Card className="lg:col-span-2 shadow-sm border-border overflow-hidden">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-               <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Incidentes Recentes</CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground">Últimas ocorrências registadas no sistema.</CardDescription>
-               </div>
-               <Button variant="outline" size="sm" className="h-8 text-xs font-bold">Ver Todos</Button>
-            </div>
+        <Card className="lg:col-span-2 shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine overflow-hidden">
+          <CardHeader className="border-b border-border/50 bg-muted/20">
+             <div className="flex items-center justify-between">
+                <div>
+                   <CardTitle className="text-sm font-bold tracking-tight">Incidentes Recentes</CardTitle>
+                   <CardDescription className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 mt-0.5">Últimas 24 horas</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold uppercase tracking-tight gap-2">
+                   Ver Tudo <ArrowRight size={10} />
+                </Button>
+             </div>
           </CardHeader>
-          <div className="border-t border-border">
+          <CardContent className="p-0">
             <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow className="hover:bg-transparent border-none">
-                  <TableHead className="text-[10px] uppercase font-bold h-10 px-6">ID Incidente</TableHead>
-                  <TableHead className="text-[10px] uppercase font-bold h-10">Descrição</TableHead>
-                  <TableHead className="text-[10px] uppercase font-bold h-10">Estado</TableHead>
-                  <TableHead className="text-[10px] uppercase font-bold h-10 text-right pr-6">Ação</TableHead>
+              <TableHeader className="bg-muted/10">
+                <TableRow className="hover:bg-transparent border-border/50">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest h-10 px-4">Incidente</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest h-10">Estado</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest h-10">Data</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest h-10 text-right pr-4">Ação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ensureArray<any>(stats.recentIncidents).slice(0, 6).map((inc) => (
-                  <TableRow key={inc.id} className="group h-14 border-border/50">
-                    <TableCell className="px-6 font-mono text-[10px] text-muted-foreground">
-                       <span className="bg-muted px-2 py-1 rounded-md">ID-{inc.id?.toString().slice(-4).toUpperCase()}</span>
-                    </TableCell>
-                    <TableCell>
-                       <div className="flex flex-col">
-                          <span className="text-xs font-bold text-foreground truncate max-w-[300px]">{inc.descricao}</span>
-                          <span className="text-[10px] text-muted-foreground">{new Date().toLocaleDateString()}</span>
-                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={inc.estado === 'Novo' ? 'destructive' : (inc.estado === 'Em Progresso' ? 'default' : 'secondary')} 
-                        className="text-[9px] h-4 uppercase font-bold px-2"
-                      >
-                        {inc.estado}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right pr-6">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => onSelectIncident?.(inc.id)}>
-                        <ArrowUpRight size={14} />
-                      </Button>
-                    </TableCell>
+                {ensureArray(stats.recentIncidents).length > 0 ? (
+                  ensureArray(stats.recentIncidents).map((inc: any, i: number) => (
+                    <TableRow key={i} className="group hover:bg-muted/30 transition-colors border-border/50">
+                      <TableCell className="px-4 py-3">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">{inc.titulo}</span>
+                          <span className="text-[10px] text-muted-foreground font-medium">{inc.propriedade}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant="outline"
+                          className={`text-[9px] h-4 uppercase font-bold px-2 border-none ${
+                            inc.estado === 'Novo' 
+                              ? 'bg-rose-500/15 text-rose-500' 
+                              : (inc.estado === 'Em Progresso' ? 'bg-blue-500/15 text-blue-500' : 'bg-emerald-500/15 text-emerald-500')
+                          }`}
+                        >
+                          {inc.estado}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-[10px] text-muted-foreground font-medium">
+                        {new Date().toLocaleDateString('pt-PT')}
+                      </TableCell>
+                      <TableCell className="text-right pr-4">
+                         <Button 
+                           variant="ghost" 
+                           size="icon" 
+                           className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                           onClick={() => onSelectIncident?.(inc.id)}
+                         >
+                           <ArrowUpRight size={14} className="text-muted-foreground" />
+                         </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                     <TableCell colSpan={4} className="h-24 text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground/30">
+                        Nenhum incidente registado
+                     </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
-          </div>
+          </CardContent>
         </Card>
 
         {/* Live Presence Monitor */}
-        <Card className="shadow-sm border-border bg-card">
-          <CardHeader>
+        <Card className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine overflow-hidden">
+          <CardHeader className="border-b border-border/50 bg-muted/20">
             <div className="flex items-center justify-between">
-               <CardTitle className="text-sm font-bold tracking-tight">Monitor de Acessos</CardTitle>
-               <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Live</span>
+               <CardTitle className="text-sm font-bold tracking-tight">Equipa Online</CardTitle>
+               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">Live</span>
                </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4">
             {activeUsers.length === 0 ? (
                <div className="text-center py-12 text-muted-foreground flex flex-col items-center gap-3">
-                  <Activity size={24} className="opacity-10" />
+                  <div className="h-10 w-10 rounded-full bg-muted/20 flex items-center justify-center">
+                     <Users size={18} className="opacity-20" />
+                  </div>
                   <p className="text-[10px] font-bold uppercase tracking-widest opacity-30 italic">Sem conexões ativas</p>
                </div>
             ) : (
               activeUsers.map((u, i) => (
-                <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-default">
-                  <Avatar className="h-8 w-8 border border-border shadow-sm">
-                    <AvatarFallback className="text-[10px] font-bold bg-muted uppercase text-muted-foreground">{(u.nome || 'U').slice(0, 2)}</AvatarFallback>
-                  </Avatar>
+                <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-all group cursor-default">
+                  <div className="relative">
+                    <Avatar className="h-9 w-9 border border-border ring-2 ring-emerald-500/10 shadow-sm transition-transform group-hover:scale-105">
+                      <AvatarFallback className="text-[10px] font-bold bg-zinc-100 text-[#09090b] uppercase">{(u.nome || 'U').slice(0, 2)}</AvatarFallback>
+                    </Avatar>
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-[#09090b] rounded-full shadow-lg"></span>
+                  </div>
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-xs font-bold truncate text-foreground">{u.nome}</span>
-                    <span className="text-[10px] text-muted-foreground uppercase font-medium">{u.perfil || 'Acesso Remoto'}</span>
+                    <span className="text-xs font-bold truncate text-zinc-100 group-hover:text-white transition-colors">{u.nome}</span>
+                    <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">{u.perfil || 'Acesso Direto'}</span>
                   </div>
-                  <div className="flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-full">
-                     <Clock size={10} className="text-muted-foreground" />
-                     <span className="text-[9px] font-bold text-muted-foreground uppercase">Ativo</span>
-                  </div>
+                  <Badge variant="outline" className="text-[8px] font-black h-4 px-1.5 border-none bg-zinc-800 text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                     {new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                  </Badge>
                 </div>
               ))
             )}
-            {activeUsers.length > 0 && (
-               <Button variant="ghost" className="w-full text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground h-8 mt-4">
-                  Gerenciar Sessões
-               </Button>
-            )}
+            
+            <div className="mt-4 pt-4 border-t border-border/50">
+               <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+                  <div className="flex items-center gap-2 mb-2">
+                     <Shield size={12} className="text-primary" />
+                     <span className="text-[10px] font-bold uppercase tracking-widest">Rede Segura</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">
+                     Todos os terminais estão autenticados e sob monitorização do SOC.
+                  </p>
+               </div>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -213,67 +213,99 @@ export default function App() {
         animate={{ width: isSidebarOpen ? 260 : 0 }}
         className={`bg-card border-r border-border flex flex-col sticky top-0 h-screen z-50 shrink-0 overflow-hidden transition-all duration-300 ${!isSidebarOpen && 'hidden md:flex'}`}
       >
-        <div className="p-4 flex items-center justify-between h-14 shrink-0 px-6">
+    <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#09090b] text-zinc-100 border-r border-[#1c1c1f] transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
+      <div className="flex flex-col h-full">
+        {/* Sidebar Header - Acme Inc Style */}
+        <div className="px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary text-primary-foreground shadow-sm">
-                <ShieldCheck className="w-5 h-5" />
+             <div className="h-8 w-8 rounded-lg bg-zinc-100 flex items-center justify-center text-[#09090b]">
+                <Cpu size={18} fill="currentColor" />
              </div>
              <div className="flex flex-col">
-                <span className="font-bold text-sm tracking-tight">Nexo SGFM</span>
-                <span className="text-[10px] text-muted-foreground font-medium truncate w-24">Enterprise Edition</span>
+                <span className="font-bold text-sm tracking-tight text-white">Nexo SGFM</span>
+                <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Enterprise v2.5</span>
              </div>
           </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-white hover:bg-zinc-800" onClick={() => setIsSidebarOpen(false)}>
+            <Menu size={16} />
+          </Button>
         </div>
 
-        <div className="px-4 mb-2">
-           <Button className="w-full justify-start gap-2 h-9 font-bold text-xs shadow-sm" variant="default">
-              <div className="bg-primary-foreground text-primary rounded-sm p-0.5">
+        <div className="px-4 mb-3">
+           <Button className="w-full justify-start gap-2 h-9 font-bold text-xs shadow-none bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700/50" variant="secondary">
+              <div className="bg-zinc-100 text-[#09090b] rounded-sm p-0.5">
                  <X size={10} className="rotate-45" />
               </div>
-              Rápido Criar
+              Procurar ou Criar...
+              <span className="ml-auto text-[10px] opacity-30">Alt+K</span>
            </Button>
         </div>
 
-        <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-3 py-2 space-y-6 overflow-y-auto custom-scrollbar">
           {navGroups.map((group, idx) => (
             <div key={idx} className="space-y-1">
-              {isSidebarOpen && <h3 className="px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-2">{group.label}</h3>}
-              {group.items.map((item) => {
-                if (item.permission && !item.permission(user?.perfil)) return null;
-                const isActive = activeTab === item.id;
-                return (
-                  <Button
-                    key={item.id}
-                    variant={isActive ? "secondary" : "ghost"}
-                    onClick={() => {
-                      setActiveTab(item.id);
-                      setSelectedIncidentId(null);
-                    }}
-                    className={`w-full justify-start h-9 px-2 gap-3 ${isActive ? 'bg-secondary font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-transparent'}`}
-                  >
-                    <item.icon size={16} className={isActive ? 'text-foreground' : 'text-muted-foreground/70'} />
-                    {isSidebarOpen && <span className="text-sm">{item.label}</span>}
-                  </Button>
-                );
-              })}
+              <h3 className="px-3 mb-2 text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em]">{group.label}</h3>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  if (item.permission && !item.permission(user?.perfil)) return null;
+                  const isActive = activeTab === item.id;
+                  
+                  // Soft colors for icons based on category/id
+                  const iconColors: Record<string, string> = {
+                    'dashboard': 'text-blue-400 group-hover:text-blue-300',
+                    'incidents': 'text-rose-400 group-hover:text-rose-300',
+                    'properties': 'text-amber-400 group-hover:text-amber-300',
+                    'assets': 'text-emerald-400 group-hover:text-emerald-300',
+                    'maintenance': 'text-purple-400 group-hover:text-purple-300',
+                    'reports': 'text-indigo-400 group-hover:text-indigo-300',
+                    'settings': 'text-zinc-400 group-hover:text-zinc-200'
+                  };
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setSelectedIncidentId(null);
+                      }}
+                      className={`w-full group flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-md transition-all duration-200 ${
+                        isActive 
+                          ? 'bg-zinc-800/80 text-white shadow-[0_0_15px_rgba(255,255,255,0.03)] border border-zinc-700/50' 
+                          : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/30'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <item.icon size={16} className={`${isActive ? 'text-white' : (iconColors[item.id] || 'text-zinc-500')} transition-colors duration-300`} />
+                        <span className="tracking-tight">{item.label}</span>
+                      </div>
+                      {item.id === 'incidents' && notifications.some(n => !n.lida) && (
+                        <span className="flex h-1 w-1 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-border mt-auto">
-          <div className="flex items-center gap-3 px-2 py-2 mb-2">
-            <Avatar className="h-8 w-8 border border-border">
-              <AvatarFallback className="text-[10px] font-bold bg-muted uppercase">{(user?.nome || 'U').slice(0, 2)}</AvatarFallback>
+        {/* Sidebar Footer */}
+        <div className="p-4 border-t border-[#1c1c1f] bg-[#09090b]">
+          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-zinc-800 group transition-colors cursor-pointer">
+            <Avatar className="h-8 w-8 border border-zinc-800 shadow-xl ring-2 ring-primary/5">
+              <AvatarFallback className="bg-zinc-800 text-zinc-100 text-xs font-bold uppercase transition-colors group-hover:bg-zinc-700">{(user?.nome || 'U').slice(0, 2)}</AvatarFallback>
             </Avatar>
-            <div className="flex-1 min-w-0">
-               <p className="text-xs font-bold truncate leading-none mb-1">{user?.nome}</p>
-               <p className="text-[10px] text-muted-foreground truncate">{user?.perfil}</p>
+            <div className="flex flex-col flex-1 min-w-0">
+              <span className="text-xs font-bold text-zinc-100 truncate tracking-tight">{user?.nome}</span>
+              <span className="text-[10px] text-zinc-500 font-medium truncate uppercase tracking-widest">{user?.perfil || 'Usuário'}</span>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-muted-foreground hover:text-destructive">
-               <LogOut size={14} />
-            </Button>
+            <button onClick={handleLogout} className="p-1 px-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-md transition-all">
+              <LogOut size={14} />
+            </button>
           </div>
         </div>
+      </div>
+    </div>
       </motion.aside>
 
       {/* Main Content */}
