@@ -51,7 +51,10 @@ export default function App() {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light';
     if (savedTheme) {
       setTheme(savedTheme);
-      document.documentElement.classList.toggle('light', savedTheme === 'light');
+      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+    } else {
+      // Default to dark as per initial state
+      document.documentElement.classList.add('dark');
     }
     requestNotificationPermission();
   }, []);
@@ -115,7 +118,7 @@ export default function App() {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
-    document.documentElement.classList.toggle('light', newTheme === 'light');
+    document.documentElement.classList.toggle('dark', newTheme === 'dark');
   };
 
   const handleLogin = (userData: any, userToken: string) => {
