@@ -28,7 +28,7 @@ export default function SystemSettings() {
   const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       if (res.ok) {
         const data = await res.json();
@@ -48,7 +48,7 @@ export default function SystemSettings() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify({ setting_value: value })
       });

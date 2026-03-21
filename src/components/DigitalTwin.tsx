@@ -24,6 +24,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
+import { Pagination } from './ui/Pagination';
+import { RefreshButton } from './ui/RefreshButton';
 
 const CONDITION_OPTIONS = ['Excelente', 'Bom', 'Razoável', 'Degradado', 'Crítico'];
 const ANOMALY_TYPES = ['Visual', 'Funcional', 'Ruído', 'Vibração', 'Vazamento', 'Corrosão', 'Outra'];
@@ -39,6 +41,8 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
   const [meterReadings, setMeterReadings] = useState<any[]>([]);
   const [newReading, setNewReading] = useState({ value: '', unit: 'Horas' });
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [inspectionsPage, setInspectionsPage] = useState(1);
+  const itemsPerPage = 5;
 
   const [formData, setFormData] = useState({
     condicao_geral: 'Bom',
@@ -57,33 +61,35 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
     inspector_id: '',
   });
 
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const token = (sessionStorage.getItem('token') || localStorage.getItem('token'));
+      const headers = { Authorization: `Bearer ${token}` };
+      const [inspRes, maintRes, usersRes, meterRes] = await Promise.all([
+        fetch(`/api/asset-inspections?asset_id=${asset.id}`, { headers }),
+        fetch('/api/maintenance-plans', { headers }),
+        fetch('/api/users', { headers }),
+        fetch(`/api/assets/${asset.id}/meter-readings`, { headers }),
+      ]);
+      const [inspData, maintData, usersData, meterData] = await Promise.all([
+        inspRes.ok ? inspRes.json() : [],
+        maintRes.ok ? maintRes.json() : [],
+        usersRes.ok ? usersRes.json() : [],
+        meterRes.ok ? meterRes.json() : [],
+      ]);
+      setInspections(Array.isArray(inspData) ? inspData : []);
+      setMaintenanceData(Array.isArray(maintData) ? maintData.filter((m: any) => m.asset_id === asset.id) : []);
+      setUsers(Array.isArray(usersData) ? usersData : []);
+      setMeterReadings(Array.isArray(meterData) ? meterData : []);
+    } catch (e) {
+      console.error('Erro ao carregar dados:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const headers = { Authorization: `Bearer ${token}` };
-        const [inspRes, maintRes, usersRes, meterRes] = await Promise.all([
-          fetch(`/api/asset-inspections?asset_id=${asset.id}`, { headers }),
-          fetch('/api/maintenance-plans', { headers }),
-          fetch('/api/users', { headers }),
-          fetch(`/api/assets/${asset.id}/meter-readings`, { headers }),
-        ]);
-        const [inspData, maintData, usersData, meterData] = await Promise.all([
-          inspRes.ok ? inspRes.json() : [],
-          maintRes.ok ? maintRes.json() : [],
-          usersRes.ok ? usersRes.json() : [],
-          meterRes.ok ? meterRes.json() : [],
-        ]);
-        setInspections(Array.isArray(inspData) ? inspData : []);
-        setMaintenanceData(Array.isArray(maintData) ? maintData.filter((m: any) => m.asset_id === asset.id) : []);
-        setUsers(Array.isArray(usersData) ? usersData : []);
-        setMeterReadings(Array.isArray(meterData) ? meterData : []);
-      } catch (e) {
-        console.error('Erro ao carregar dados:', e);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchAll();
   }, [asset.id]);
 
@@ -121,7 +127,7 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`,
         },
         body: JSON.stringify(payload),
       });
@@ -150,7 +156,7 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`,
         },
         body: JSON.stringify({ reading_value: newReading.value, unit: newReading.unit }),
       });
@@ -172,12 +178,6 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
 
   const lastInspection = inspections[0];
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar Digital Twin...</p>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -197,11 +197,12 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => setIsQRModalOpen(true)}>
+          <RefreshButton onClick={fetchAll} loading={loading} />
+          <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => setIsQRModalOpen(true)}>
             <QrCode size={14} />
             Etiqueta
           </Button>
-          <Button variant="default" size="sm" className="h-8 gap-2" onClick={() => setIsNewInspection(true)}>
+          <Button variant="default" size="sm" className="h-9 gap-2" onClick={() => setIsNewInspection(true)}>
             <Plus size={14} />
             Nova Inspecção
           </Button>
@@ -257,45 +258,55 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
             </TabsList>
             
             <TabsContent value="history" className="pt-4 animate-in fade-in duration-300">
-              <Card className="shadow-none border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-[10px] uppercase font-bold">Data</TableHead>
-                      <TableHead className="text-[10px] uppercase font-bold">Condição</TableHead>
-                      <TableHead className="text-[10px] uppercase font-bold">Anomalias</TableHead>
-                      <TableHead className="text-[10px] uppercase font-bold">Ação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {inspections.map((insp) => (
-                      <TableRow key={insp.id} className="cursor-pointer group" onClick={() => setSelectedInspection(insp)}>
-                        <TableCell className="text-xs font-medium">
-                          {format(new Date(insp.data_inspecao), 'dd MMM yyyy, HH:mm', { locale: ptBR })}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={conditionVariant(insp.condicao_geral) as any} className="text-[9px] h-4">
-                            {insp.condicao_geral}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate text-[11px] text-muted-foreground">
-                          {insp.anomalias_detectadas || 'Nenhuma'}
-                        </TableCell>
-                        <TableCell>
-                          {insp.requer_manutencao && <Badge variant="destructive" className="text-[8px] h-3.5 px-1">MANUTENÇÃO</Badge>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {inspections.length === 0 && (
+                <Card className="shadow-none border-border overflow-hidden">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic text-xs">
-                          Nenhuma inspecção registada até ao momento.
-                        </TableCell>
+                        <TableHead className="text-[10px] uppercase font-bold">Data</TableHead>
+                        <TableHead className="text-[10px] uppercase font-bold">Condição</TableHead>
+                        <TableHead className="text-[10px] uppercase font-bold">Anomalias</TableHead>
+                        <TableHead className="text-[10px] uppercase font-bold">Ação</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {inspections.slice((inspectionsPage - 1) * itemsPerPage, inspectionsPage * itemsPerPage).map((insp) => (
+                        <TableRow key={insp.id} className="cursor-pointer group" onClick={() => setSelectedInspection(insp)}>
+                          <TableCell className="text-xs font-medium">
+                            {format(new Date(insp.data_inspecao), 'dd MMM yyyy, HH:mm', { locale: ptBR })}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={conditionVariant(insp.condicao_geral) as any} className="text-[9px] h-4">
+                              {insp.condicao_geral}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate text-[11px] text-muted-foreground">
+                            {insp.anomalias_detectadas || 'Nenhuma'}
+                          </TableCell>
+                          <TableCell>
+                            {insp.requer_manutencao && <Badge variant="destructive" className="text-[8px] h-3.5 px-1">MANUTENÇÃO</Badge>}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {inspections.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic text-xs">
+                            Nenhuma inspecção registada até ao momento.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </Card>
+                {inspections.length > itemsPerPage && (
+                  <div className="mt-4">
+                    <Pagination
+                      currentPage={inspectionsPage}
+                      totalItems={inspections.length}
+                      itemsPerPage={itemsPerPage}
+                      onPageChange={setInspectionsPage}
+                    />
+                  </div>
+                )}
             </TabsContent>
 
             <TabsContent value="meter" className="pt-4 animate-in fade-in duration-300">
@@ -351,7 +362,17 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {meterReadings.map((r, i) => (
+                        {loading && meterReadings.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={3} className="h-32 text-center">
+                              <div className="flex flex-col items-center gap-2">
+                                <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Sincronizando...</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : meterReadings.length > 0 ? (
+                          meterReadings.map((r, i) => (
                           <TableRow key={r.id}>
                             <TableCell className="text-xs">{format(new Date(r.recorded_at), 'dd MMM yyyy', { locale: ptBR })}</TableCell>
                             <TableCell className="text-xs font-bold">{r.reading_value} {r.unit}</TableCell>
@@ -359,7 +380,14 @@ export default function DigitalTwin({ asset, onBack }: { asset: any; onBack: () 
                               {i < meterReadings.length - 1 ? `+${(Number(r.reading_value) - Number(meterReadings[i+1].reading_value)).toFixed(1)}` : '—'}
                             </TableCell>
                           </TableRow>
-                        ))}
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={3} className="h-32 text-center text-muted-foreground italic text-xs">
+                               Nenhuma leitura encontrada.
+                            </TableCell>
+                          </TableRow>
+                        )}
                       </TableBody>
                     </Table>
                   </CardContent>

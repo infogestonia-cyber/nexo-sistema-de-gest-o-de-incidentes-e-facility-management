@@ -17,6 +17,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from './ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Separator } from './ui/separator';
+import { Pagination } from './ui/Pagination';
+import { RefreshButton } from './ui/RefreshButton';
 
 const getPerfilVariant = (perfil: string) => {
   switch (perfil?.toLowerCase()) {
@@ -34,10 +36,12 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
   
   const [currentUser] = useState<any>(() => {
     try {
-      const u = localStorage.getItem('user');
+      const u = (sessionStorage.getItem('user') || localStorage.getItem('user'));
       return u && u !== 'undefined' ? JSON.parse(u) : {};
     } catch { return {}; }
   });
@@ -63,7 +67,7 @@ export default function Users() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      const res = await fetch('/api/users', { headers: { Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` } });
       const data = res.ok ? await res.json() : [];
       setUsers(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -77,8 +81,8 @@ export default function Users() {
   const fetchMetadata = async () => {
     try {
       const [pRes, aRes] = await Promise.all([
-        fetch('/api/properties', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }),
-        fetch('/api/assets', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+        fetch('/api/properties', { headers: { Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` } }),
+        fetch('/api/assets', { headers: { Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` } })
       ]);
       if (pRes.ok) setProperties(await pRes.json());
       if (aRes.ok) setAssets(await aRes.json());
@@ -91,7 +95,7 @@ export default function Users() {
       const url = user.type === 'client' ? `/api/clientes/${user.id}` : `/api/users/${user.id}`;
       const res = await fetch(url, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       if (res.ok) fetchUsers();
     } catch (e) { console.error(e); }
@@ -137,7 +141,7 @@ export default function Users() {
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` },
         body: JSON.stringify(submitData),
       });
 
@@ -158,12 +162,11 @@ export default function Users() {
     u.perfil?.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar acessos...</p>
-    </div>
+  const paginatedUsers = filteredUsers.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
   );
+
 
   return (
     <div className="space-y-6">
@@ -179,6 +182,7 @@ export default function Users() {
               className="pl-9 w-64 h-9 text-xs bg-muted/20 border-border"
             />
           </div>
+          <RefreshButton onClick={fetchUsers} loading={loading} />
           <div className="hidden md:flex items-center gap-2 px-3 h-9 border border-border rounded-md bg-muted/10">
             <UserIcon size={12} className="text-muted-foreground" />
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{filteredUsers.length} Contas Ativas</span>
@@ -228,61 +232,85 @@ export default function Users() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.map((u) => (
-              <TableRow key={u.id} className="group h-14">
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-muted border border-border flex items-center justify-center text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
-                      <UserIcon size={14} />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-semibold truncate">{u.nome}</span>
-                      <span className="text-[10px] text-muted-foreground truncate">{u.email}</span>
-                    </div>
+            {loading && users.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-64 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-xs">Sincronizando utilizadores...</p>
                   </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={getPerfilVariant(u.perfil) as any} className="text-[9px] h-4 uppercase font-bold">
-                    {u.perfil}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <div className={`h-1.5 w-1.5 rounded-full ${u.estado === 'Inativo' ? 'bg-muted-foreground' : 'bg-success'}`}></div>
-                    <span className="text-[10px] font-bold uppercase text-muted-foreground">{u.estado || 'Ativo'}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-[10px] text-muted-foreground font-medium">
-                  {u.ultimo_acesso ? safeFormat(u.ultimo_acesso, 'dd MMM, HH:mm') : 'Nunca acedeu'}
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
-                        <MoreVertical size={14} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 text-xs">
-                      <DropdownMenuLabel>Gestão de Conta</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleEdit(u)}>
-                        <Settings size={14} className="mr-2" /> Editar Perfil
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleResetPassword(u)}>
-                        <Key size={14} className="mr-2" /> Resetar Password
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(u)}>
-                        <UserMinus size={14} className="mr-2" /> Revogar Acesso
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
+            ) : paginatedUsers.length > 0 ? (
+              paginatedUsers.map((u) => (
+                <TableRow key={u.id} className="group h-14">
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded bg-muted border border-border flex items-center justify-center text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
+                        <UserIcon size={14} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-semibold truncate">{u.nome}</span>
+                        <span className="text-[10px] text-muted-foreground truncate">{u.email}</span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={getPerfilVariant(u.perfil) as any} className="text-[9px] h-4 uppercase font-bold">
+                      {u.perfil}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className={`h-1.5 w-1.5 rounded-full ${u.estado === 'Inativo' ? 'bg-muted-foreground' : 'bg-success'}`}></div>
+                      <span className="text-[10px] font-bold uppercase text-muted-foreground">{u.estado || 'Ativo'}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-[10px] text-muted-foreground font-medium">
+                    {u.ultimo_acesso ? safeFormat(u.ultimo_acesso, 'dd MMM, HH:mm') : 'Nunca acedeu'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
+                          <MoreVertical size={14} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 text-xs">
+                        <DropdownMenuLabel>Gestão de Conta</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleEdit(u)}>
+                          <Settings size={14} className="mr-2" /> Editar Perfil
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleResetPassword(u)}>
+                          <Key size={14} className="mr-2" /> Resetar Password
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(u)}>
+                          <UserMinus size={14} className="mr-2" /> Revogar Acesso
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="h-64 text-center text-muted-foreground italic text-xs">
+                   Nenhum utilizador encontrado.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </Card>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filteredUsers.length}
+        itemsPerPage={itemsPerPage}
+        onPageChange={setCurrentPage}
+      />
 
       {/* User Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
@@ -364,7 +392,7 @@ const handleResetPassword = async (user: any) => {
   try {
     const res = await fetch(`/api/users/${user.id}/reset-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` },
       body: JSON.stringify({ newPassword: newPass }),
     });
     if (res.ok) alert('Senha resetada com sucesso');

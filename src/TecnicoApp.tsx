@@ -29,14 +29,14 @@ const NAV = [
 
 export default function TecnicoApp() {
     const [user, setUser] = useState<any>(null);
-    const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+    const [token, setToken] = useState<string | null>((sessionStorage.getItem('token') || localStorage.getItem('token')));
     const [activeTab, setActiveTab] = useState<Tab>('dashboard');
     const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
-    const [isValidating, setIsValidating] = useState(!!localStorage.getItem('token'));
+    const [isValidating, setIsValidating] = useState(!!(sessionStorage.getItem('token') || localStorage.getItem('token')));
     const [isSyncing, setIsSyncing] = useState(false);
 
     React.useEffect(() => {
-        const savedToken = localStorage.getItem('token');
+        const savedToken = (sessionStorage.getItem('token') || localStorage.getItem('token'));
         if (savedToken) {
             const validateSession = async () => {
                 try {

@@ -20,6 +20,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from './ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Separator } from './ui/separator';
+import { Pagination } from './ui/Pagination';
+import { RefreshButton } from './ui/RefreshButton';
 
 export default function Inventory() {
   const [items, setItems] = useState<any[]>([]);
@@ -32,6 +34,8 @@ export default function Inventory() {
   const [searchTerm, setSearchTerm] = useState('');
   const [stockAction, setStockAction] = useState<{ id: string, type: 'add' | 'remove', quantity: number }>({ id: '', type: 'add', quantity: 1 });
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
 
   const defaultFormData = {
     nome: '',
@@ -55,7 +59,7 @@ export default function Inventory() {
 
   const fetchSupportData = async () => {
     try {
-      const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
+      const headers = { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` };
       const [pRes, aRes] = await Promise.all([
         fetch('/api/properties', { headers }),
         fetch('/api/assets', { headers })
@@ -70,7 +74,7 @@ export default function Inventory() {
   const fetchInventory = async () => {
     try {
       const res = await fetch('/api/inventory', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       const data = res.ok ? await res.json() : [];
       setItems(Array.isArray(data) ? data : []);
@@ -90,7 +94,7 @@ export default function Inventory() {
         method: isEditing ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify(formData)
       });
@@ -112,7 +116,7 @@ export default function Inventory() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify({
           quantity_change: stockAction.quantity,
@@ -161,15 +165,13 @@ export default function Inventory() {
     item.categoria.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const paginatedItems = filteredItems.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   const totalValue = items.reduce((acc, item) => acc + (parseFloat(item.preco_compra || 0) * item.quantidade), 0);
   const lowStockCount = items.filter(item => item.quantidade <= item.stock_minimo).length;
-
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar inventário...</p>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -185,15 +187,18 @@ export default function Inventory() {
               className="pl-9 w-64 h-9 text-xs bg-muted/20 border-border"
             />
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <RefreshButton onClick={fetchInventory} loading={loading} />
           <Button variant="outline" size="sm" className="h-9 gap-2 text-xs" onClick={handleExport}>
             <Download size={14} />
             Exportar CSV
           </Button>
+          <Button size="sm" className="h-9 gap-2 text-xs font-bold" onClick={() => { setSelectedItem(null); setFormData(defaultFormData); setIsModalOpen(true); }}>
+            <Plus size={16} />
+            Registar Material
+          </Button>
         </div>
-        <Button size="sm" className="h-9 gap-2 text-xs font-bold" onClick={() => { setSelectedItem(null); setFormData(defaultFormData); setIsModalOpen(true); }}>
-          <Plus size={16} />
-          Registar Material
-        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -230,68 +235,78 @@ export default function Inventory() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredItems.map((item) => (
-              <TableRow key={item.id} className="group h-14">
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-muted border border-border flex items-center justify-center text-muted-foreground">
-                      <Package size={14} />
-                    </div>
-                    <span className="text-xs font-semibold">{item.nome}</span>
+            {loading && items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic text-xs">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Sincronizando stock...</p>
                   </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="text-[9px] h-4 uppercase font-bold bg-muted/20">
-                    {item.categoria}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold ${item.quantidade <= item.stock_minimo ? 'text-destructive' : 'text-foreground'}`}>
-                      {item.quantidade}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground font-medium">/ {item.stock_minimo}</span>
-                    {item.quantidade <= item.stock_minimo && <AlertTriangle size={12} className="text-destructive animate-pulse" />}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase truncate max-w-[150px]">{item.property_name || 'Geral'}</span>
-                    <span className="text-[9px] text-muted-foreground truncate max-w-[150px]">{item.asset_name || 'Sem ativo fixo'}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs font-bold">
-                  {(parseFloat(item.preco_compra) || 0).toLocaleString()} MT
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
-                        <MoreVertical size={14} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 text-xs">
-                      <DropdownMenuLabel>Gestão de Stock</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => { setStockAction({ id: item.id, type: 'add', quantity: 1 }); setIsStockModalOpen(true); }}>
-                        <Plus size={14} className="mr-2" /> Adicionar Entrada
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setStockAction({ id: item.id, type: 'remove', quantity: 1 }); setIsStockModalOpen(true); }}>
-                        <ArrowDownRight size={14} className="mr-2" /> Registar Saída
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleEdit(item)}>
-                        <Edit3 size={14} className="mr-2" /> Editar Item
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
-                        <Trash2 size={14} className="mr-2" /> Eliminar Registo
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
-            {filteredItems.length === 0 && (
+            ) : paginatedItems.length > 0 ? (
+              paginatedItems.map((item) => (
+                <TableRow key={item.id} className="group h-14">
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded bg-muted border border-border flex items-center justify-center text-muted-foreground">
+                        <Package size={14} />
+                      </div>
+                      <span className="text-xs font-semibold">{item.nome}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-[9px] h-4 uppercase font-bold bg-muted/20">
+                      {item.categoria}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold ${item.quantidade <= item.stock_minimo ? 'text-destructive' : 'text-foreground'}`}>
+                        {item.quantidade}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-medium">/ {item.stock_minimo}</span>
+                      {item.quantidade <= item.stock_minimo && <AlertTriangle size={12} className="text-destructive animate-pulse" />}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold uppercase truncate max-w-[150px]">{item.property_name || 'Geral'}</span>
+                      <span className="text-[9px] text-muted-foreground truncate max-w-[150px]">{item.asset_name || 'Sem ativo fixo'}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold">
+                    {(parseFloat(item.preco_compra) || 0).toLocaleString()} MT
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
+                          <MoreVertical size={14} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 text-xs">
+                        <DropdownMenuLabel>Gestão de Stock</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => { setStockAction({ id: item.id, type: 'add', quantity: 1 }); setIsStockModalOpen(true); }}>
+                          <Plus size={14} className="mr-2" /> Adicionar Entrada
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setStockAction({ id: item.id, type: 'remove', quantity: 1 }); setIsStockModalOpen(true); }}>
+                          <ArrowDownRight size={14} className="mr-2" /> Registar Saída
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleEdit(item)}>
+                          <Edit3 size={14} className="mr-2" /> Editar Item
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive">
+                          <Trash2 size={14} className="mr-2" /> Eliminar Registo
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic text-xs">
                   Nenhum material encontrado.
@@ -301,6 +316,13 @@ export default function Inventory() {
           </TableBody>
         </Table>
       </Card>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filteredItems.length}
+        itemsPerPage={itemsPerPage}
+        onPageChange={setCurrentPage}
+      />
 
       {/* Main Item Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

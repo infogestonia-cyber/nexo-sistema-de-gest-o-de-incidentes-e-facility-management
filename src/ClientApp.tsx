@@ -21,14 +21,14 @@ const NAV = [
 
 export default function ClientApp() {
   const [cliente, setCliente] = useState<any>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('cliente_token'));
+  const [token, setToken] = useState<string | null>((sessionStorage.getItem('cliente_token') || localStorage.getItem('cliente_token')));
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [isValidating, setIsValidating] = useState(!!localStorage.getItem('cliente_token'));
+  const [isValidating, setIsValidating] = useState(!!(sessionStorage.getItem('cliente_token') || localStorage.getItem('cliente_token')));
   const [isSyncing, setIsSyncing] = useState(false);
 
   React.useEffect(() => {
-    const savedToken = localStorage.getItem('cliente_token');
-    const savedCliente = localStorage.getItem('cliente_user');
+    const savedToken = (sessionStorage.getItem('cliente_token') || localStorage.getItem('cliente_token'));
+    const savedCliente = (sessionStorage.getItem('cliente_user') || localStorage.getItem('cliente_user'));
 
     if (savedToken && savedCliente) {
       setToken(savedToken);

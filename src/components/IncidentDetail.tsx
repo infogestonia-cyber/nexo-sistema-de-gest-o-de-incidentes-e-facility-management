@@ -59,7 +59,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
   const [estCost, setEstCost] = useState(0);
   const [user] = useState<any>(() => {
     try {
-      const u = localStorage.getItem('user');
+      const u = (sessionStorage.getItem('user') || localStorage.getItem('user'));
       return u && u !== 'undefined' ? JSON.parse(u) : {};
     } catch { return {}; }
   });
@@ -76,7 +76,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
       roomId: `incident-${id}`,
       user: (() => {
         try {
-          const u = localStorage.getItem('user');
+          const u = (sessionStorage.getItem('user') || localStorage.getItem('user'));
           return u && u !== 'undefined' ? JSON.parse(u) : {};
         } catch { return {}; }
       })()
@@ -398,11 +398,15 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
   const handleUpdateEstCost = async (val: number) => {
     setEstCost(val);
     try {
+      // 1. Atualizar o valor na tabela incidents
+      await api.patch(`/api/incidents/${id}`, { custo_estimado: val });
+      
+      // 2. Registar a ação no histórico (audit log)
       await api.post(`/api/incidents/${id}/actions`, { 
-        descricao_acao: `[Custo Estimado Atualizado] Novo valor: ${val.toLocaleString('pt-MZ')} MT` 
+        descricao_acao: `[Custo Mão-de-Obra Atualizado] Novo valor: ${val.toLocaleString('pt-MZ')} MT` 
       });
     } catch (err) {
-      console.error(err);
+      console.error("Erro ao atualizar custo mão-de-obra:", err);
     }
   };
 

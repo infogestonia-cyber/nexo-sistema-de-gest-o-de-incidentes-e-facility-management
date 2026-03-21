@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from './ui/
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
+import { RefreshButton } from './ui/RefreshButton';
 
 export default function Analytics() {
   const [data, setData] = useState<any>({
@@ -29,7 +30,7 @@ export default function Analytics() {
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const h = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      const h = { Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` };
       const [incRes, assRes, invRes, plansRes] = await Promise.all([
         fetch('/api/incidents', { headers: h }),
         fetch('/api/assets', { headers: h }),
@@ -76,7 +77,7 @@ export default function Analytics() {
   const plans = ensureArray<any>(data.plans);
   const totalBudgeted = plans.reduce((acc: number, p: any) => acc + (p.custo_estimado || 0), 0);
 
-  if (loading) return (
+  if (loading && incidents.length === 0) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
       <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Processando Inteligência de Dados...</p>
@@ -85,12 +86,15 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-1 border-b border-border pb-6">
-        <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-          <Activity className="text-primary w-4 h-4" />
-          Analytics & Financeiro
-        </h2>
-        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-60 italic">Relatórios de performance operacional e fluxo de tesouraria em tempo real</p>
+      <div className="flex items-center justify-between border-b border-border pb-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+            <Activity className="text-primary w-4 h-4" />
+            Analytics & Financeiro
+          </h2>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-60 italic">Relatórios de performance operacional e fluxo de tesouraria em tempo real</p>
+        </div>
+        <RefreshButton onClick={fetchAnalytics} loading={loading} />
       </div>
 
       {/* Primary KPI Grid */}

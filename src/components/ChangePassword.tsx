@@ -30,7 +30,7 @@ export default function ChangePassword() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify({ password }),
       });
@@ -38,7 +38,7 @@ export default function ChangePassword() {
       if (res.ok) {
         showToast('Palavra-passe atualizada com sucesso! Redirecionando...');
         // Update local user data
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const user = JSON.parse((sessionStorage.getItem('user') || localStorage.getItem('user')) || '{}');
         user.must_change_password = false;
         localStorage.setItem('user', JSON.stringify(user));
         

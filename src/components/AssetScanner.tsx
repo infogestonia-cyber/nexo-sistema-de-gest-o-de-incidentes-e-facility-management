@@ -27,7 +27,7 @@ export default function AssetScanner({ onSelectAsset }: { onSelectAsset: (asset:
     
     try {
       const res = await fetch(`/api/assets`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       if (!res.ok) throw new Error('Erro ao carregar ativos');
       const assets = await res.json();

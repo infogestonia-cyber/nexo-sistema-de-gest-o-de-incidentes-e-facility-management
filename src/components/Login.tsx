@@ -8,14 +8,16 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Checkbox } from './ui/checkbox';
 
 interface LoginProps {
-  onLogin: (user: any, token: string) => void;
+  onLogin: (user: any, token: string, rememberMe: boolean) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -26,7 +28,7 @@ export default function Login({ onLogin }: LoginProps) {
 
     try {
       const data = await api.post('/api/login', { email, password });
-      onLogin(data.user, data.token);
+      onLogin(data.user, data.token, rememberMe);
     } catch (err: any) {
       setError(err.error || 'Erro ao entrar. Verifique as suas credenciais.');
     } finally {
@@ -95,6 +97,21 @@ export default function Login({ onLogin }: LoginProps) {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox 
+              id="remember" 
+              checked={rememberMe}
+              onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+              className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+            />
+            <label
+              htmlFor="remember"
+              className="text-xs font-semibold leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-muted-foreground uppercase tracking-widest cursor-pointer hover:text-foreground transition-colors"
+            >
+              Lembrar-me neste dispositivo
+            </label>
           </div>
 
           {/* shadcn default primary button */}

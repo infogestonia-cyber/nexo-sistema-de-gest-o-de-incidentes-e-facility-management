@@ -3,7 +3,8 @@ import {
   Plus, Search, Filter, AlertCircle, Clock, CheckCircle2, 
   X as XIcon, Activity, ChevronDown, Trash2, Download, 
   Calendar as CalendarIcon, User as UserIcon, AlertTriangle, 
-  MoreVertical, FileSpreadsheet, ArrowUpRight, ArrowDown
+  MoreVertical, FileSpreadsheet, ArrowUpRight, ArrowDown,
+  RefreshCw, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, isValid } from 'date-fns';
@@ -24,6 +25,8 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from './ui/dropdown-menu';
 import { Separator } from './ui/separator';
+import { Pagination } from './ui/Pagination';
+import { RefreshButton } from './ui/RefreshButton';
 
 const safeFormat = (dateStr: string | null | undefined, fmt: string) => {
   if (!dateStr) return '—';
@@ -62,13 +65,16 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+  const [companyInfo, setCompanyInfo] = useState<any>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   
   const [currentUser] = useState<any>(() => {
     try {
-      const u = localStorage.getItem('user');
+      const u = (sessionStorage.getItem('user') || localStorage.getItem('user'));
       return u && u !== 'undefined' ? JSON.parse(u) : {};
     } catch { return {}; }
   });
@@ -86,15 +92,17 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = (sessionStorage.getItem('token') || localStorage.getItem('token'));
       const h = { Authorization: `Bearer ${token}` };
-      const [incRes, propRes, assetRes, userRes, settingsRes] = await Promise.all([
+      const [incRes, propRes, assetRes, userRes, settingsRes, companyRes] = await Promise.all([
         fetch('/api/incidents', { headers: h }),
         fetch('/api/properties', { headers: h }),
         fetch('/api/assets', { headers: h }),
         fetch('/api/users', { headers: h }),
-        fetch('/api/settings', { headers: h })
+        fetch('/api/settings', { headers: h }),
+        fetch('/api/company-info', { headers: h })
       ]);
 
       const incData = incRes.ok ? await incRes.json() : [];
@@ -102,11 +110,13 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       const assetData = assetRes.ok ? await assetRes.json() : [];
       const userData = userRes.ok ? await userRes.json() : [];
       const settingsData = settingsRes.ok ? await settingsRes.json() : [];
+      const companyData = companyRes.ok ? await companyRes.json() : null;
 
       setIncidents(Array.isArray(incData) ? incData : []);
       setProperties(Array.isArray(propData) ? propData : []);
       setAssets(Array.isArray(assetData) ? assetData : []);
       setUsers(Array.isArray(userData) ? userData : []);
+      setCompanyInfo(companyData);
 
       const incidentSetting = Array.isArray(settingsData) ? settingsData.find((s: any) => s.setting_key === 'incident_categories') : null;
       if (incidentSetting && Array.isArray(incidentSetting.setting_value) && incidentSetting.setting_value.length > 0) {
@@ -140,7 +150,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify(submitData)
       });
@@ -166,32 +176,47 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
     return matchesSearch && matchesStatus && matchesSeverity;
   });
 
+  const paginated = filtered.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   const handleExport = () => {
-    const csvHeaders = ['Protocolo', 'Data', 'Status', 'Severidade', 'Categoria', 'Unidade', 'Responsavel'];
+    const csvHeaders = ['Protocolo', 'Data Abertura', 'Status', 'Severidade', 'Categoria', 'Unidade', 'Equipamento', 'Criado Por', 'Responsavel', 'Valor Mao de Obra', 'Descricao'];
+    
+    // Add Company Info as header lines
+    const companyHeader = companyInfo ? [
+      [companyInfo.nome || 'Nexo SGFM'],
+      [companyInfo.endereco || ''],
+      [companyInfo.telefone || ''],
+      ['Relatório de Incidentes'],
+      [`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`],
+      ['']
+    ].map(row => row.join(',')).join('\n') : '';
+
     const csvRows = filtered.map(i => [
       `#${i.id}`,
-      safeFormat(i.created_at, 'yyyy-MM-dd'),
+      safeFormat(i.created_at, 'yyyy-MM-dd HH:mm'),
       i.estado,
       i.severidade,
       i.categoria,
-      i.property_name,
-      i.responsavel_nome || 'Livre'
+      i.property_name || 'N/A',
+      i.asset_name || 'Geral',
+      i.criado_por_nome || 'N/A',
+      i.responsavel_nome || 'Livre',
+      i.custo_estimado ? `${i.custo_estimado} MT` : '0 MT',
+      `"${(i.descricao || '').replace(/"/g, '""')}"`
     ].join(','));
-    const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    const csvContent = companyHeader + csvHeaders.join(',') + '\n' + csvRows.join('\n');
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `incidentes_${format(new Date(), 'yyyyMMdd')}.csv`);
+    link.setAttribute('download', `incidentes_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`);
     link.click();
   };
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar registos...</p>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -243,12 +268,13 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
         </div>
 
         <div className="flex items-center gap-2">
+          <RefreshButton onClick={fetchData} loading={loading} />
           <Button variant="outline" size="sm" className="h-9 gap-2 text-xs font-semibold bg-muted/5 border-border/50 hover:bg-muted/20" onClick={handleExport}>
             <Download size={14} className="text-muted-foreground" />
             Exportar dados
           </Button>
           {canReportIncidents(currentUser.perfil) && (
-            <Button size="sm" className="h-9 gap-2 text-xs font-bold shadow-lg shadow-primary/10" onClick={() => setIsModalOpen(true)}>
+            <Button size="sm" className="h-9 gap-2 text-xs font-bold shadow-lg shadow-primary/10 bg-primary/90 hover:bg-primary" onClick={() => setIsModalOpen(true)}>
               <Plus size={16} />
               Criar Ocorrência
             </Button>
@@ -260,9 +286,9 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Registos', value: incidents.length, icon: Activity, color: 'text-blue-500', bgColor: 'bg-blue-500/10' },
-          { label: 'Em Aberto', value: incidents.filter(i => i.estado === 'Novo').length, icon: AlertCircle, color: 'text-rose-500', bgColor: 'bg-rose-500/10' },
-          { label: 'Em Resolução', value: incidents.filter(i => i.estado === 'Em Progresso').length, icon: Clock, color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
-          { label: 'Concluídos', value: incidents.filter(i => i.estado === 'Concluido').length, icon: CheckCircle2, color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
+          { label: 'Em Aberto', value: incidents.filter(i => i.estado === 'Aberto' || i.estado === 'Novo').length, icon: AlertCircle, color: 'text-rose-500', bgColor: 'bg-rose-500/10' },
+          { label: 'Em Resolução', value: incidents.filter(i => i.estado === 'Em Progresso' || i.estado === 'Atribuído').length, icon: Clock, color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
+          { label: 'Concluídos', value: incidents.filter(i => i.estado === 'Concluido' || i.estado === 'Resolvido').length, icon: CheckCircle2, color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
         ].map((s, i) => (
           <Card key={i} className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine group hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-4 flex items-center justify-between">
@@ -293,93 +319,103 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((incident) => (
-              <TableRow 
-                key={incident.id} 
-                className="cursor-pointer group h-14"
-                onClick={() => onSelectIncident(incident.id)}
-              >
-                <TableCell className="font-mono text-[10px] text-muted-foreground/80">
-                  <span className="bg-muted px-2 py-0.5 rounded-sm">
-                    #{incident.id?.toString().slice(-6).toUpperCase()}
-                  </span>
-                </TableCell>
-                <TableCell className="text-[10px] font-semibold text-muted-foreground/60 whitespace-nowrap">
-                  {safeFormat(incident.created_at, 'dd MMM, HH:mm')}
-                </TableCell>
-                <TableCell>
-                  <Badge 
-                    variant="outline" 
-                    className={`text-[9px] h-4 uppercase font-bold border-none ${
-                       incident.estado === 'Novo' ? 'bg-rose-500/15 text-rose-500' :
-                       incident.estado === 'Em Progresso' ? 'bg-blue-500/15 text-blue-500' :
-                       incident.estado === 'Concluido' ? 'bg-emerald-500/15 text-emerald-500' :
-                       'bg-zinc-500/15 text-zinc-500'
-                    }`}
-                  >
-                    {incident.estado}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge 
-                    variant="outline" 
-                    className={`text-[9px] h-4 uppercase font-bold border-none ${
-                       incident.severidade === 'Crítico' || incident.severidade === 'Alto' ? 'bg-rose-500/10 text-rose-500' :
-                       incident.severidade === 'Médio' ? 'bg-amber-500/10 text-amber-500' :
-                       'bg-emerald-500/10 text-emerald-500'
-                    }`}
-                  >
-                    {incident.severidade}
-                  </Badge>
-                </TableCell>
-                <TableCell className="min-w-[250px]">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold truncate group-hover:text-primary transition-colors tracking-tight">
-                      {incident.descricao}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/50 font-bold uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
-                      <div className="h-1 w-1 rounded-full bg-border" /> {incident.property_name}
-                    </span>
+            {loading && incidents.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="h-64 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-xs">Sincronizando incidentes...</p>
                   </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-5 h-5 rounded-full bg-zinc-800 border border-border/50 flex items-center justify-center overflow-hidden shrink-0">
-                      {incident.responsavel_nome ? <UserIcon size={10} className="text-zinc-400" /> : <Clock size={10} className="text-zinc-600" />}
-                    </div>
-                    <span className="text-[10px] font-bold text-muted-foreground/70 truncate max-w-[120px] uppercase tracking-tight">
-                      {incident.responsavel_nome || 'Aguardando'}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
-                        <MoreVertical size={14} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 text-xs">
-                      <DropdownMenuLabel>Ações Rápidas</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => onSelectIncident(incident.id)}>
-                        <ArrowUpRight size={14} className="mr-2" /> Ver Detalhes
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <UserIcon size={14} className="mr-2" /> Atribuir Técnico
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive">
-                        <Trash2 size={14} className="mr-2" /> Eliminar Registo
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
-            {filtered.length === 0 && (
+            ) : filtered.length > 0 ? (
+              filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((incident) => (
+                <TableRow 
+                  key={incident.id} 
+                  className="cursor-pointer group h-14"
+                  onClick={() => onSelectIncident(incident.id)}
+                >
+                  <TableCell className="font-mono text-[10px] text-muted-foreground/80">
+                    <span className="bg-muted px-2 py-0.5 rounded-sm">
+                      #{incident.id?.toString().slice(-6).toUpperCase()}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-[10px] font-semibold text-muted-foreground/60 whitespace-nowrap">
+                    {safeFormat(incident.created_at, 'dd MMM, HH:mm')}
+                  </TableCell>
+                  <TableCell>
+                    <Badge 
+                      variant="outline" 
+                      className={`text-[9px] h-4 uppercase font-bold border-none ${
+                         incident.estado === 'Aberto' || incident.estado === 'Novo' ? 'bg-rose-500/15 text-rose-500' :
+                         incident.estado === 'Em Progresso' || incident.estado === 'Atribuído' ? 'bg-blue-500/15 text-blue-500' :
+                         incident.estado === 'Concluido' || incident.estado === 'Resolvido' ? 'bg-emerald-500/15 text-emerald-500' :
+                         'bg-zinc-500/15 text-zinc-500'
+                      }`}
+                    >
+                      {incident.estado}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge 
+                      variant="outline" 
+                      className={`text-[9px] h-4 uppercase font-bold border-none ${
+                         incident.severidade === 'Crítico' || incident.severidade === 'Alto' ? 'bg-rose-500/10 text-rose-500' :
+                         incident.severidade === 'Médio' ? 'bg-amber-500/10 text-amber-500' :
+                         'bg-emerald-500/10 text-emerald-500'
+                      }`}
+                    >
+                      {incident.severidade}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="min-w-[250px]">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold truncate group-hover:text-primary transition-colors tracking-tight">
+                        {incident.descricao}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/50 font-bold uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
+                        <div className="h-1 w-1 rounded-full bg-border" /> {incident.property_name}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-zinc-800 border border-border/50 flex items-center justify-center overflow-hidden shrink-0">
+                        {incident.responsavel_nome ? <UserIcon size={10} className="text-zinc-400" /> : <Clock size={10} className="text-zinc-600" />}
+                      </div>
+                      <span className="text-[10px] font-bold text-muted-foreground/70 truncate max-w-[120px] uppercase tracking-tight">
+                        {incident.responsavel_nome || 'Aguardando'}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                     <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
+                          <MoreVertical size={14} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 text-xs">
+                        <DropdownMenuLabel>Ações Rápidas</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => onSelectIncident(incident.id)}>
+                          <ArrowUpRight size={14} className="mr-2" /> Ver Detalhes
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <UserIcon size={14} className="mr-2" /> Atribuir Técnico
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive">
+                          <Trash2 size={14} className="mr-2" /> Eliminar Registo
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
               <TableRow>
-                <TableCell colSpan={7} className="h-64 text-center">
+                <TableCell colSpan={8} className="h-64 text-center">
                   <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
                     <Activity size={32} className="opacity-10" />
                     <p className="text-xs font-medium uppercase tracking-widest">Nenhum incidente encontrado</p>
@@ -390,6 +426,13 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
           </TableBody>
         </Table>
       </Card>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filtered.length}
+        itemsPerPage={itemsPerPage}
+        onPageChange={setCurrentPage}
+      />
 
       {/* New Incident Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

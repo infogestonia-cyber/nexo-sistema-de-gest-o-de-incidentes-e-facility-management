@@ -118,7 +118,9 @@ async function startServer() {
 
   const authenticate = async (req: Request, res: Response, next: NextFunction) => {
     const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "Não autorizado" });
+    if (!token || token === "null" || token === "undefined") {
+      return res.status(401).json({ error: "Sessão expirada ou não autorizado" });
+    }
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
@@ -135,7 +137,7 @@ async function startServer() {
       }
 
       // Strict Database Validation - Every request checks user status
-      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', decoded.id).single();
+      const { data: profile, error } = await (supabaseAdmin || supabase).from('profiles').select('*').eq('id', decoded.id).single();
       
       if (error || !profile) {
         logToFile("WARNING", "Segurança: Tentativa de acesso com utilizador inexistente ou eliminado", { userId: decoded.id });
@@ -200,7 +202,7 @@ async function startServer() {
         return res.status(401).json({ error: "Credenciais inválidas" });
       }
 
-      const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', authData.user.id).single();
+      const { data: profile, error: profileError } = await (supabaseAdmin || supabase).from('profiles').select('*').eq('id', authData.user.id).single();
       if (profileError || !profile) {
         logToFile("ERROR", "Login falhou: Perfil não encontrado", { email, user_id: authData.user.id, error: profileError?.message });
         return res.status(401).json({ error: "Perfil não encontrado no sistema" });
@@ -261,21 +263,21 @@ async function startServer() {
 
   app.get("/api/notifications", authenticate, async (req, res) => {
     const userId = (req as any).user.id;
-    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20);
+    const { data, error } = await (supabaseAdmin || supabase).from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
 
   app.post("/api/notifications/read", authenticate, async (req, res) => {
     const userId = (req as any).user.id;
-    const { error } = await supabase.from('notifications').update({ lida: true }).eq('user_id', userId);
+    const { error } = await (supabaseAdmin || supabase).from('notifications').update({ lida: true }).eq('user_id', userId);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
   const createNotification = async (userId: string, titulo: string, mensagem: string) => {
     const notif = { id: crypto.randomUUID(), user_id: userId, titulo, mensagem, lida: false, created_at: new Date().toISOString() };
-    await supabase.from('notifications').insert([notif]);
+    await (supabaseAdmin || supabase).from('notifications').insert([notif]);
     io.emit("notification", { userId, titulo, mensagem });
   };
 
@@ -288,7 +290,7 @@ async function startServer() {
     const { codigo, pin } = req.body;
     logToFile("INFO", "Tentativa de login cliente", { codigo, pin_length: pin?.length });
     if (!codigo || !pin) return res.status(400).json({ error: "Código e PIN são obrigatórios" });
-    const { data: dbCliente } = await supabaseAdmin.from('clientes').select('*').eq('codigo', codigo).eq('pin', pin).single();
+    const { data: dbCliente } = await supabaseAdmin.from('clientes').select('*').ilike('codigo', codigo).eq('pin', pin).single();
     const cliente = dbCliente;
     if (!cliente) {
       logToFile("WARNING", "Login cliente falhou: Código ou PIN inválidos", { codigo });
@@ -305,8 +307,7 @@ async function startServer() {
 
   const authenticateCliente = (req: Request, res: Response, next: NextFunction) => {
     const token = req.headers.authorization?.split(" ")[1];
-    if (!token) {
-      logToFile("WARNING", "Acesso Cliente negado: Sem token");
+    if (!token || token === "null" || token === "undefined") {
       return res.status(401).json({ error: "Sessão expirada ou não autorizado" });
     }
     try {
@@ -325,7 +326,7 @@ async function startServer() {
 
   app.get("/api/cliente/dashboard", authenticateCliente, async (req, res) => {
     const { id, perfil } = (req as any).cliente;
-    let query = supabase.from('incidents').select('*');
+    let query = (supabaseAdmin || supabase).from('incidents').select('*');
     if (perfil !== 'Administrador') {
       query = query.eq('cliente_id', id);
     }
@@ -348,10 +349,10 @@ async function startServer() {
     const { id, perfil } = (req as any).cliente;
     const { estado } = req.query;
     
-    let query = supabase.from('incidents').select('*');
+    let query = (supabaseAdmin || supabase).from('incidents').select('*');
     if (perfil !== 'Administrador') {
       // Filtro estrito: Apenas incidentes de propriedades vinculadas a este cliente
-      const { data: props } = await supabase.from('properties').select('id').eq('client_id', id);
+      const { data: props } = await (supabaseAdmin || supabase).from('properties').select('id').eq('client_id', id);
       const validPropIds = (props || []).map(p => p.id);
       query = query.in('property_id', validPropIds);
     }
@@ -372,7 +373,7 @@ async function startServer() {
         return res.status(400).json({ error: "ID da ordem é obrigatório" });
       }
 
-      const { error } = await supabase.from('incidents').update({ 
+      const { error } = await (supabaseAdmin || supabase).from('incidents').update({ 
         estado: 'Fechado', 
         validado: true, 
         observacao_validacao: observacao, 
@@ -494,7 +495,7 @@ async function startServer() {
 
   app.get("/api/cliente/properties", authenticateCliente, async (req, res) => {
     const { id, perfil, property_id } = (req as any).cliente;
-    let query = supabase.from('properties').select('*');
+    let query = (supabaseAdmin || supabase).from('properties').select('*');
 
     if (perfil !== 'Administrador') {
       if (property_id) {
@@ -528,8 +529,8 @@ async function startServer() {
         const clientToUse = supabaseAdmin || supabase;
         const { data, error } = await clientToUse.from('clientes').insert([{
           nome,
-          codigo,
-          pin,
+          codigo: codigo || email,
+          pin: pin || password,
           contrato,
           orcamento_mensal: parseFloat(orcamento_mensal) || 0,
           property_id
@@ -559,7 +560,7 @@ async function startServer() {
         return res.status(400).json({ error: authError?.message || "Erro ao criar utilizador" });
       }
 
-      const { error: profileError } = await supabase.from('profiles').insert([{
+      const { error: profileError } = await (supabaseAdmin || supabase).from('profiles').insert([{
         id: authData.user.id,
         nome, email, perfil,
         property_id: req.body.property_id || null,
@@ -685,7 +686,7 @@ async function startServer() {
         return res.status(400).json({ error: error.message });
       }
       
-      const { error: profileErr } = await supabase.from('profiles').update({ must_change_password: false }).eq('id', userId);
+      const { error: profileErr } = await (supabaseAdmin || supabase).from('profiles').update({ must_change_password: false }).eq('id', userId);
       if (profileErr) {
         logToFile("WARNING", "Erro ao atualizar perfil após mudança de senha", { error: profileErr.message, user_id: userId });
       }
@@ -765,7 +766,7 @@ async function startServer() {
       }
 
       // Process list locally
-      const { data: incidents, error: incDataError } = await supabase.from('incidents').select('*, properties(endereco)');
+      const { data: incidents, error: incDataError } = await (supabaseAdmin || supabase).from('incidents').select('*, properties(endereco)');
       if (incDataError) {
         logToFile("ERROR", "Erro ao carregar incidentes para dashboard", { error: incDataError.message, user_id: userId });
       }
@@ -817,7 +818,7 @@ async function startServer() {
   });
 
   app.get("/api/properties", authenticate, async (req, res) => {
-    const { data } = await supabase.from('properties').select('*');
+    const { data } = await (supabaseAdmin || supabase).from('properties').select('*');
     res.json(data || []);
   });
 
@@ -831,7 +832,7 @@ async function startServer() {
         return res.status(400).json({ error: "Código e Endereço são obrigatórios" });
       }
 
-      const { data, error } = await supabase.from('properties').insert([{ codigo, endereco, inquilino, referencia_interna }]).select('id').single();
+      const { data, error } = await (supabaseAdmin || supabase).from('properties').insert([{ codigo, endereco, inquilino, referencia_interna }]).select('id').single();
       
       if (error) {
         logToFile("ERROR", "Erro ao criar propriedade", { error: error.message, codigo, endereco, user_id: userId });
@@ -843,6 +844,32 @@ async function startServer() {
     } catch (error: any) {
       logToFile("ERROR", "Erro geral ao criar propriedade", { error: error.message, codigo, endereco, user_id: userId });
       res.status(500).json({ error: "Erro ao criar propriedade" });
+    }
+  });
+
+  app.patch("/api/properties/:id", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { codigo, endereco, inquilino, referencia_interna } = req.body;
+    const userId = (req as any).user?.id;
+
+    try {
+      const { data, error } = await (supabaseAdmin || supabase)
+        .from('properties')
+        .update({ codigo, endereco, inquilino, referencia_interna })
+        .eq('id', id)
+        .select('*')
+        .single();
+      
+      if (error) {
+        logToFile("ERROR", "Erro ao atualizar propriedade", { error: error.message, id, user_id: userId });
+        return res.status(500).json({ error: "Erro ao atualizar propriedade" });
+      }
+
+      logToFile("INFO", "Propriedade atualizada com sucesso", { id, user_id: userId });
+      res.json(data);
+    } catch (error: any) {
+      logToFile("ERROR", "Erro geral ao atualizar propriedade", { error: error.message, id, user_id: userId });
+      res.status(500).json({ error: "Erro ao atualizar propriedade" });
     }
   });
 
@@ -876,6 +903,8 @@ async function startServer() {
         property_id: property_id || null, 
         data_instalacao, 
         probabilidade_falha: probabilidade_falha || 'Baixa',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
       // Adicionar campos extras apenas se estiverem preenchidos
@@ -917,6 +946,69 @@ async function startServer() {
     } catch (error: any) {
       logToFile("ERROR", "Erro geral ao criar ativo", { error: error.message, nome, categoria, user_id: userId });
       res.status(500).json({ error: "Erro ao criar ativo" });
+    }
+  });
+
+  app.patch("/api/assets/:id", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { nome, categoria, property_id, localizacao_detalhada, data_instalacao, probabilidade_falha, sinais_alerta, parent_id, obsoleto, data_obsolescencia } = req.body;
+    const userId = (req as any).user?.id;
+    
+    try {
+      logToFile("INFO", "Tentativa de atualizar ativo", { id, nome, user_id: userId, body: req.body });
+
+      const updatePayload: any = { 
+        updated_at: new Date().toISOString() 
+      };
+
+      if (nome) updatePayload.nome = nome;
+      if (categoria) updatePayload.categoria = categoria;
+      if (property_id !== undefined) updatePayload.property_id = property_id || null;
+      if (localizacao_detalhada !== undefined) updatePayload.localizacao_detalhada = localizacao_detalhada;
+      if (data_instalacao) updatePayload.data_instalacao = data_instalacao;
+      if (probabilidade_falha) updatePayload.probabilidade_falha = probabilidade_falha;
+      if (sinais_alerta !== undefined) updatePayload.sinais_alerta = sinais_alerta;
+      if (parent_id !== undefined) updatePayload.parent_id = parent_id || null;
+      if (obsoleto !== undefined) updatePayload.obsoleto = obsoleto;
+      if (data_obsolescencia !== undefined) updatePayload.data_obsolescencia = data_obsolescencia || null;
+
+      const db = supabaseAdmin || supabase;
+      let { data, error } = await db.from('assets').update(updatePayload).eq('id', id).select('*').single();
+
+      // Fallback if columns don't exist yet (usually 'obsoleto' or auditing columns)
+      if (error) {
+        logToFile("WARNING", "Falha de schema detectada ao atualizar ativo. Tentando payload de compatibilidade.", { error: error.message, id, code: error.code });
+        
+        const minimalUpdate: any = {};
+        if (nome) minimalUpdate.nome = nome;
+        if (categoria) minimalUpdate.categoria = categoria;
+        if (property_id !== undefined) minimalUpdate.property_id = property_id || null;
+        if (data_instalacao) minimalUpdate.data_instalacao = data_instalacao;
+        if (probabilidade_falha) minimalUpdate.probabilidade_falha = probabilidade_falha;
+        
+        // Incluir data_obsolescencia no fallback pois o usuário confirmou que esta existe
+        if (data_obsolescencia !== undefined) minimalUpdate.data_obsolescencia = data_obsolescencia || null;
+
+        // Tentar incluir obsoleto se o erro NÃO foi especificamente sobre ele estar em falta
+        if (obsoleto !== undefined && !error.message.includes("'obsoleto'")) {
+          minimalUpdate.obsoleto = obsoleto;
+        }
+
+        const retry = await db.from('assets').update(minimalUpdate).eq('id', id).select('*').single();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) {
+        logToFile("ERROR", "Falha definitiva ao atualizar ativo", { error: error.message, id, code: error.code, user_id: userId });
+        return res.status(500).json({ error: `Erro na base de dados: ${error.message}` });
+      }
+
+      logToFile("INFO", "Ativo atualizado com sucesso", { id, user_id: userId });
+      res.json(data);
+    } catch (error: any) {
+      logToFile("ERROR", "Erro geral ao atualizar ativo", { error: error.message, id, user_id: userId });
+      res.status(500).json({ error: "Erro ao atualizar ativo" });
     }
   });
 
@@ -964,13 +1056,28 @@ async function startServer() {
 
 
   app.get("/api/incidents", authenticate, async (req, res) => {
-    const { data } = await supabase.from('incidents')
-      .select('*, properties(endereco), profiles!responsavel_id(nome), clientes!cliente_id(nome)')
+    const db = supabaseAdmin || supabase;
+    let result = await db.from('incidents')
+      .select('*, properties(endereco), profiles!responsavel_id(nome), criado_por_rel:profiles!criado_por(nome), clientes!cliente_id(nome)')
       .order('created_at', { ascending: false });
-    const mapped = (data || []).map((i: any) => ({
+
+    if (result.error) {
+      logToFile("WARNING", "Falha de schema nos joins de incidentes. Tentando fallback de query.", { error: result.error.message });
+      result = await db.from('incidents')
+        .select('*, properties(endereco), profiles!responsavel_id(nome)')
+        .order('created_at', { ascending: false });
+    }
+
+    if (result.error) {
+      logToFile("ERROR", "Erro fatal ao buscar incidentes.", { error: result.error.message });
+      return res.status(500).json({ error: "Falha na base de dados" });
+    }
+
+    const mapped = (result.data || []).map((i: any) => ({
       ...i,
       property_name: i.properties?.endereco,
       responsavel_nome: i.profiles?.nome,
+      criado_por_nome: (i as any).criado_por_rel?.nome || i.cliente_nome || 'Cliente / Sistema',
       cliente_nome: i.clientes?.nome || null
     }));
     res.json(mapped);
@@ -987,7 +1094,7 @@ async function startServer() {
     let respHours = 48, resHours = 120;
     try {
       const sevKey = severidade === 'Crítico' ? 'sla_critico' : severidade === 'Alto' ? 'sla_alto' : severidade === 'Médio' ? 'sla_medio' : 'sla_baixo';
-      const { data: slaData } = await supabase.from('system_settings').select('setting_value').eq('setting_key', sevKey).single();
+      const { data: slaData } = await (supabaseAdmin || supabase).from('system_settings').select('setting_value').eq('setting_key', sevKey).single();
       if (slaData?.setting_value) {
         respHours = slaData.setting_value.resposta_horas ?? respHours;
         resHours = slaData.setting_value.resolucao_horas ?? resHours;
@@ -1006,7 +1113,7 @@ async function startServer() {
 
     logToFile("DEBUG", "Payload Incidente", payload);
 
-    const { data, error } = await supabase.from('incidents').insert([payload]).select('id').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('incidents').insert([payload]).select('id').single();
 
     if (error) {
       logToFile("ERROR", "Erro ao inserir incidente", { error: error.message, code: error.code });
@@ -1021,15 +1128,55 @@ async function startServer() {
     res.json({ id: data?.id });
   });
 
+  app.patch("/api/incidents/:id", authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { custo_estimado, estado, responsavel_id, severidade, categoria, descricao } = req.body;
+    const userId = (req as any).user.id;
+
+    try {
+      const updatePayload: any = { 
+        updated_at: new Date().toISOString() 
+      };
+      if (custo_estimado !== undefined) updatePayload.custo_estimado = parseFloat(custo_estimado) || 0;
+      if (estado) updatePayload.estado = estado;
+      if (responsavel_id) updatePayload.responsavel_id = responsavel_id === 'none' ? null : responsavel_id;
+      if (severidade) updatePayload.severidade = severidade;
+      if (categoria) updatePayload.categoria = categoria;
+      if (descricao) updatePayload.descricao = descricao;
+
+      const { data, error } = await (supabaseAdmin || supabase).from('incidents').update(updatePayload).eq('id', id).select('*').single();
+      if (error) {
+        logToFile("ERROR", "Erro ao atualizar incidente", { error: error.message, id, updatePayload });
+        return res.status(500).json({ error: error.message });
+      }
+
+      io.emit("incident-update", { action: 'patch', incidentId: id });
+      res.json(data);
+    } catch (error: any) {
+      logToFile("ERROR", "Erro geral ao atualizar incidente", { error: error.message, id });
+      res.status(500).json({ error: "Erro ao atualizar incidente" });
+    }
+  });
+
   app.get("/api/incidents/:id", authenticate, async (req, res) => {
     const userId = (req as any).user?.id;
     const incidentId = req.params.id;
 
     try {
-      const { data: incident, error: incError } = await supabase.from('incidents')
-        .select('*, properties(endereco), profiles!responsavel_id(nome), clientes!cliente_id(nome)')
+      let result = await (supabaseAdmin || supabase).from('incidents')
+        .select('*, properties(endereco), profiles!responsavel_id(nome), criado_por_rel:profiles!criado_por(nome), clientes!cliente_id(nome)')
         .eq('id', incidentId)
         .single();
+        
+      if (result.error && result.error.code !== 'PGRST116') {
+        logToFile("WARNING", "Falha de schema nos joins do incidente. Tentando fallback.", { error: result.error.message });
+        result = await (supabaseAdmin || supabase).from('incidents')
+          .select('*, properties(endereco), profiles!responsavel_id(nome)')
+          .eq('id', incidentId)
+          .single();
+      }
+
+      const { data: incident, error: incError } = result;
 
       if (incError) {
         logToFile("ERROR", "Erro ao carregar detalhe de incidente", { error: incError.message, incident_id: incidentId, user_id: userId });
@@ -1041,21 +1188,14 @@ async function startServer() {
         return res.status(404).json({ error: "Incidente não encontrado" });
       }
 
-      let criado_por_nome = null;
-      if (incident?.criado_por) {
-        const { data: creator } = await supabase.from('profiles').select('nome').eq('id', incident.criado_por).single();
-        if (creator) criado_por_nome = creator.nome;
-      }
+      const finalCriadoPorNome = (incident as any).criado_por_rel?.nome || (incident as any).clientes?.nome || 'Cliente / Sistema';
 
-      const { data: actions, error: actionsError } = await supabase.from('incident_actions').select('*, profiles(nome)').eq('incident_id', incidentId).order('created_at', { ascending: true });
+      const { data: actions, error: actionsError } = await (supabaseAdmin || supabase).from('incident_actions').select('*, profiles(nome)').eq('incident_id', incidentId).order('created_at', { ascending: true });
 
       if (actionsError) {
         logToFile("WARNING", "Erro ao carregar ações de incidente (continuando)", { error: actionsError.message, incident_id: incidentId });
       }
 
-      // Preferir nome do cliente (quando existir) caso o autor (criado_por) não seja um perfil do sistema
-      const clienteNome = (incident as any)?.clientes?.nome;
-      const finalCriadoPorNome = criado_por_nome || clienteNome || 'Cliente / Sistema';
 
       logToFile("DEBUG", "Incidente carregado com sucesso", { incident_id: incidentId, user_id: userId, estado: incident.estado });
 
@@ -1085,13 +1225,13 @@ async function startServer() {
       // Auto-generate audit message when assigning a technician
       let autoLogSuffix = '';
       if (responsavel_id) {
-        const { data: techProfile } = await supabase.from('profiles').select('nome').eq('id', responsavel_id).single();
-        const { data: assignerProfile } = await supabase.from('profiles').select('nome').eq('id', userId).single();
+        const { data: techProfile } = await (supabaseAdmin || supabase).from('profiles').select('nome').eq('id', responsavel_id).single();
+        const { data: assignerProfile } = await (supabaseAdmin || supabase).from('profiles').select('nome').eq('id', userId).single();
         autoLogSuffix = ` — Atribuído a: ${techProfile?.nome || 'Técnico'} (por ${assignerProfile?.nome || 'Gestor'})`;
       }
 
       const finalDesc = ((descricao_acao || '').trim() + autoLogSuffix) || '[Ação registada]';
-      const { error: actionError } = await supabase.from('incident_actions').insert([{ incident_id: incidentId, user_id: safeUserId(userId), descricao_acao: finalDesc }]);
+      const { error: actionError } = await (supabaseAdmin || supabase).from('incident_actions').insert([{ incident_id: incidentId, user_id: safeUserId(userId), descricao_acao: finalDesc }]);
 
       if (actionError) {
         logToFile("ERROR", "Erro ao registar ação de incidente", { error: actionError.message, incident_id: incidentId, user_id: userId });
@@ -1101,7 +1241,7 @@ async function startServer() {
       logToFile("INFO", "Ação de incidente registada com sucesso", { incident_id: incidentId, novo_estado, responsavel_id, user_id: userId });
 
       if (Object.keys(updateData).length > 0) {
-        const { data: currentInc, error: getError } = await supabase.from('incidents').select('data_resposta, data_resolucao, responsavel_id, categoria').eq('id', incidentId).single();
+        const { data: currentInc, error: getError } = await (supabaseAdmin || supabase).from('incidents').select('data_resposta, data_resolucao, responsavel_id, categoria').eq('id', incidentId).single();
         
         if (getError) {
           logToFile("ERROR", "Erro ao recuperar incidente para atualização", { error: getError.message, incident_id: incidentId });
@@ -1117,7 +1257,7 @@ async function startServer() {
           }
         }
 
-        const { error: updateError } = await supabase.from('incidents').update(updateData).eq('id', incidentId);
+        const { error: updateError } = await (supabaseAdmin || supabase).from('incidents').update(updateData).eq('id', incidentId);
         if (updateError) {
           logToFile("ERROR", "Erro ao atualizar estado do incidente", { error: updateError.message, incident_id: incidentId, new_state: novo_estado });
           return res.status(500).json({ error: "Erro ao atualizar incidente" });
@@ -1144,7 +1284,7 @@ async function startServer() {
 
   // ─── System Settings (SLA etc.) ───────────────────────────────────────────
   app.get("/api/settings", authenticate, async (req, res) => {
-    const { data, error } = await supabase.from('system_settings').select('*').order('setting_key');
+    const { data, error } = await (supabaseAdmin || supabase).from('system_settings').select('*').order('setting_key');
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
@@ -1156,26 +1296,26 @@ async function startServer() {
     const { setting_value } = req.body;
 
     // Upsert: update if exists, otherwise insert
-    const { data: existing, error: fetchError } = await supabase.from('system_settings').select('*').eq('setting_key', key).single();
+    const { data: existing, error: fetchError } = await (supabaseAdmin || supabase).from('system_settings').select('*').eq('setting_key', key).single();
     if (fetchError && fetchError.code !== 'PGRST116') {
       return res.status(500).json({ error: fetchError.message });
     }
 
     if (existing) {
-      const { data, error } = await supabase.from('system_settings')
+      const { data, error } = await (supabaseAdmin || supabase).from('system_settings')
         .update({ setting_value, updated_at: new Date().toISOString() })
         .eq('setting_key', key).select('*').single();
       if (error) return res.status(500).json({ error: error.message });
       return res.json(data);
     }
 
-    const { data, error } = await supabase.from('system_settings').insert([{ setting_key: key, setting_value, description: key }]).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('system_settings').insert([{ setting_key: key, setting_value, description: key }]).select('*').single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
 
   app.get("/api/company-info", authenticate, async (req, res) => {
-    const { data, error } = await supabase.from('company_info').select('*').limit(1).single();
+    const { data, error } = await (supabaseAdmin || supabase).from('company_info').select('*').limit(1).single();
     if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
     res.json(data || {});
   });
@@ -1184,14 +1324,14 @@ async function startServer() {
     if ((req as any).user.perfil !== 'Administrador') return res.status(403).json({ error: 'Acesso negado' });
     const { nome, endereco, telefone, email, logotipo_url } = req.body;
     
-    const { data: existing } = await supabase.from('company_info').select('id').limit(1).single();
+    const { data: existing } = await (supabaseAdmin || supabase).from('company_info').select('id').limit(1).single();
     
     if (existing) {
-      const { data, error } = await supabase.from('company_info').update({ nome, endereco, telefone, email, logotipo_url, updated_at: new Date().toISOString() }).eq('id', existing.id).select('*').single();
+      const { data, error } = await (supabaseAdmin || supabase).from('company_info').update({ nome, endereco, telefone, email, logotipo_url, updated_at: new Date().toISOString() }).eq('id', existing.id).select('*').single();
       if (error) return res.status(500).json({ error: error.message });
       return res.json(data);
     } else {
-      const { data, error } = await supabase.from('company_info').insert([{ nome, endereco, telefone, email, logotipo_url }]).select('*').single();
+      const { data, error } = await (supabaseAdmin || supabase).from('company_info').insert([{ nome, endereco, telefone, email, logotipo_url }]).select('*').single();
       if (error) return res.status(500).json({ error: error.message });
       return res.json(data);
     }
@@ -1199,7 +1339,7 @@ async function startServer() {
 
   app.get("/api/maintenance-plans", authenticate, async (req, res) => {
     try {
-      const { data, error } = await supabase.from('maintenance_plans').select('*, assets(nome), profiles!responsavel_id(nome)');
+      const { data, error } = await (supabaseAdmin || supabase).from('maintenance_plans').select('*, assets(nome), profiles!responsavel_id(nome)');
       if (error) {
         logToFile("ERROR", "Erro ao buscar planos de manutenção", { error: error.message });
         return res.status(500).json({ error: error.message });
@@ -1225,14 +1365,14 @@ async function startServer() {
       }
 
       // Validar que o ativo existe
-      const { data: assetExists, error: assetError } = await supabase.from('assets').select('id').eq('id', asset_id).single();
+      const { data: assetExists, error: assetError } = await (supabaseAdmin || supabase).from('assets').select('id').eq('id', asset_id).single();
       if (assetError || !assetExists) {
         logToFile("WARNING", "Tentativa de criar plano com ativo inexistente", { asset_id, responsavel_id, userId });
         return res.status(400).json({ error: "Ativo não encontrado no sistema" });
       }
 
       // Validar que o responsável existe E É UM PERFIL VÁLIDO
-      const { data: responsavelExists, error: responsavelError } = await supabase.from('profiles').select('id, nome, perfil').eq('id', responsavel_id).single();
+      const { data: responsavelExists, error: responsavelError } = await (supabaseAdmin || supabase).from('profiles').select('id, nome, perfil').eq('id', responsavel_id).single();
       if (responsavelError || !responsavelExists) {
         logToFile("WARNING", "Tentativa de criar plano com responsável inexistente", { asset_id, responsavel_id, userId });
         return res.status(400).json({ error: "Responsável (Técnico) não encontrado no sistema. Verifique se o utilizador existe e está ativo." });
@@ -1244,7 +1384,7 @@ async function startServer() {
         return res.status(400).json({ error: `Apenas Técnicos, Gestores ou Administradores podem ser responsáveis por planos. O utilizador é: ${responsavelExists.perfil}` });
       }
 
-      const { data, error } = await supabase.from('maintenance_plans').insert([{
+      const { data, error } = await (supabaseAdmin || supabase).from('maintenance_plans').insert([{
         asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado: parseFloat(custo_estimado) || 0, descricao,
         estado: 'Pendente'
       }]).select('id').single();
@@ -1269,7 +1409,7 @@ async function startServer() {
 
     try {
       // Verify plan exists first
-      const { data: planExists, error: getError } = await supabase.from('maintenance_plans').select('id, estado').eq('id', id).single();
+      const { data: planExists, error: getError } = await (supabaseAdmin || supabase).from('maintenance_plans').select('id, estado').eq('id', id).single();
       if (getError || !planExists) {
         logToFile("WARNING", "Tentativa de concluir plano inexistente", { id, user_id: userId });
         return res.status(404).json({ error: "Plano de manutenção não encontrado" });
@@ -1283,7 +1423,7 @@ async function startServer() {
       let success = false;
 
       // Try 1: "completed" status
-      const { error: err1 } = await supabase.from('maintenance_plans')
+      const { error: err1 } = await (supabaseAdmin || supabase).from('maintenance_plans')
         .update({ ...updatePayload, status: 'Concluído' })
         .eq('id', id);
       if (!err1) {
@@ -1294,7 +1434,7 @@ async function startServer() {
 
       // Try 2: "estado" status if first failed
       if (!success && lastError?.message?.includes("column")) {
-        const { error: err2 } = await supabase.from('maintenance_plans')
+        const { error: err2 } = await (supabaseAdmin || supabase).from('maintenance_plans')
           .update({ ...updatePayload, estado: 'Concluído' })
           .eq('id', id);
         if (!err2) {
@@ -1306,7 +1446,7 @@ async function startServer() {
 
       // Try 3: Just mark as completed without status update
       if (!success && lastError?.message?.includes("column")) {
-        const { error: err3 } = await supabase.from('maintenance_plans')
+        const { error: err3 } = await (supabaseAdmin || supabase).from('maintenance_plans')
           .update(updatePayload)
           .eq('id', id);
         if (!err3) {
@@ -1334,7 +1474,7 @@ async function startServer() {
     const { id } = req.params;
 
     try {
-      const { error } = await supabase.from('maintenance_plans').delete().eq('id', id);
+      const { error } = await (supabaseAdmin || supabase).from('maintenance_plans').delete().eq('id', id);
       
       if (error) {
         logToFile("ERROR", "Erro ao eliminar plano de manutenção", { error: error.message, id, userId });
@@ -1352,7 +1492,7 @@ async function startServer() {
   app.get("/api/planning-5y", authenticate, async (req, res) => {
     const userId = (req as any).user?.id;
     try {
-      const { data, error } = await supabase.from('planning_5y').select('*').order('ano', { ascending: true }).order('trimestre', { ascending: true });
+      const { data, error } = await (supabaseAdmin || supabase).from('planning_5y').select('*').order('ano', { ascending: true }).order('trimestre', { ascending: true });
       if (error) {
         logToFile("ERROR", "Erro ao buscar planejamento 5 anos", { error: error.message, userId });
         return res.status(500).json({ error: "Erro ao buscar planejamento" });
@@ -1373,7 +1513,7 @@ async function startServer() {
         logToFile("WARNING", "Tentativa de criar planejamento com dados obrigatórios faltando", { item, ano, trimestre, userId });
         return res.status(400).json({ error: "Item, Anos e Trimestre são obrigatórios" });
       }
-      const { data, error } = await supabase.from('planning_5y').insert([{ item, ano, trimestre, observacoes }]);
+      const { data, error } = await (supabaseAdmin || supabase).from('planning_5y').insert([{ item, ano, trimestre, observacoes }]);
       if (error) {
         logToFile("ERROR", "Erro ao criar planejamento 5 anos", { error: error.message, item, ano, trimestre, userId });
         return res.status(500).json({ error: "Erro ao criar planejamento" });
@@ -1453,7 +1593,7 @@ async function startServer() {
   });
 
   const safeSupabaseInsert = async (table: string, payload: Record<string, any>, select = 'id'): Promise<{ data: any; error: any }> => {
-    const { data, error } = await supabase.from(table).insert([payload]).select(select).single();
+    const { data, error } = await (supabaseAdmin || supabase).from(table).insert([payload]).select(select).single();
     if (!error) return { data, error: null };
 
     const match = error.message?.match(/Could not find the '([^']+)' column/);
@@ -1470,7 +1610,7 @@ async function startServer() {
   };
 
   const safeSupabaseUpdate = async (table: string, id: string, payload: Record<string, any>): Promise<{ data: any; error: any }> => {
-    const { data, error } = await supabase.from(table).update(payload).eq('id', id).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from(table).update(payload).eq('id', id).select('*').single();
     if (!error) return { data, error: null };
 
     const match = error.message?.match(/Could not find the '([^']+)' column/);
@@ -1572,12 +1712,12 @@ async function startServer() {
     const userId = (req as any).user?.id;
 
     // First get current stock
-    const { data: item, error: fetchError } = await supabase.from('inventory').select('quantity_on_hand').eq('id', id).single();
+    const { data: item, error: fetchError } = await (supabaseAdmin || supabase).from('inventory').select('quantity_on_hand').eq('id', id).single();
     if (fetchError) return res.status(404).json({ error: "Item not found" });
 
     const currentQuantity = item.quantity_on_hand;
     const newQuantity = type === 'add' ? currentQuantity + quantity_change : currentQuantity - quantity_change;
-    const { data: updated, error: updateError } = await supabase.from('inventory').update({ quantity_on_hand: Math.max(0, newQuantity) }).eq('id', id).select('*').single();
+    const { data: updated, error: updateError } = await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: Math.max(0, newQuantity) }).eq('id', id).select('*').single();
 
     if (updateError) return res.status(500).json({ error: updateError.message });
 
@@ -1590,7 +1730,7 @@ async function startServer() {
     const { ids, updates } = req.body; // ids: string[], updates: { estado?, severidade? }
     if (!ids || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No IDs provided" });
 
-    const { data, error } = await supabase.from('incidents').update(updates).in('id', ids).select('*');
+    const { data, error } = await (supabaseAdmin || supabase).from('incidents').update(updates).in('id', ids).select('*');
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
@@ -1598,7 +1738,7 @@ async function startServer() {
   // ─── Incident Checklists & Parts ────────────────────────────────────────
   app.get("/api/incidents/:id/checklists", authenticate, async (req, res) => {
     const { id } = req.params;
-    const { data, error } = await supabase.from('incident_checklists').select('*').eq('incident_id', id);
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_checklists').select('*').eq('incident_id', id);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
@@ -1613,7 +1753,7 @@ async function startServer() {
     const payload = { incident_id: id, task_description, is_completed: false, ...userAuditPayload(userId) };
     logToFile("DEBUG", "Payload Checklist", payload);
 
-    const { data, error } = await supabase.from('incident_checklists').insert([payload]).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_checklists').insert([payload]).select('*').single();
     if (error) {
       logToFile("ERROR", "Falha ao gravar checklist", { error: error.message, code: error.code, payload });
       return res.status(500).json({ error: error.message });
@@ -1624,7 +1764,7 @@ async function startServer() {
   app.patch("/api/incidents/:id/checklists/:checklistId", authenticate, async (req, res) => {
     const { is_completed } = req.body;
     const { id, checklistId } = req.params;
-    const { data, error } = await supabase.from('incident_checklists').update({ is_completed }).eq('id', checklistId).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_checklists').update({ is_completed }).eq('id', checklistId).select('*').single();
     if (error) {
        logToFile("ERROR", "Falha ao atualizar checklist", { error: error.message });
        return res.status(500).json({ error: error.message });
@@ -1639,7 +1779,7 @@ async function startServer() {
     const userPerfil = (req as any).user.perfil;
 
     // Fetch the item to verify creator and get description
-    const { data: item, error: fetchErr } = await supabase.from('incident_checklists').select('user_id, task_description').eq('id', checklistId).single();
+    const { data: item, error: fetchErr } = await (supabaseAdmin || supabase).from('incident_checklists').select('user_id, task_description').eq('id', checklistId).single();
     if (fetchErr || !item) return res.status(404).json({ error: 'Tarefa não encontrada' });
 
     // Only creator, Gestor or Admin can delete
@@ -1647,10 +1787,10 @@ async function startServer() {
       return res.status(403).json({ error: 'Sem permissão para eliminar esta tarefa' });
     }
 
-    await supabase.from('incident_checklists').delete().eq('id', checklistId);
+    await (supabaseAdmin || supabase).from('incident_checklists').delete().eq('id', checklistId);
 
     // Audit log entry
-    await supabase.from('incident_actions').insert([{
+    await (supabaseAdmin || supabase).from('incident_actions').insert([{
       incident_id: id, user_id: safeUserId(userId),
       descricao_acao: `[✕ Tarefa eliminada] ${item.task_description}`
     }]);
@@ -1660,7 +1800,7 @@ async function startServer() {
 
   app.get("/api/incidents/:id/parts", authenticate, async (req, res) => {
     const { id } = req.params;
-    const { data, error } = await supabase.from('incident_parts').select('*, inventory(name, unit_cost, sku)').eq('incident_id', id);
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_parts').select('*, inventory(name, unit_cost, sku)').eq('incident_id', id);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
@@ -1674,7 +1814,7 @@ async function startServer() {
     logToFile("INFO", "Tentativa de registar material", { id, userId, part_id, qty });
 
     // Decrease inventory stock
-    const { data: part, error: partError } = await supabase.from('inventory').select('quantity_on_hand, name').eq('id', part_id).single();
+    const { data: part, error: partError } = await (supabaseAdmin || supabase).from('inventory').select('quantity_on_hand, name').eq('id', part_id).single();
     if (partError) {
       logToFile("ERROR", "Peça não encontrada no inventário", { part_id });
       return res.status(404).json({ error: "Peça não encontrada no inventário" });
@@ -1688,16 +1828,16 @@ async function startServer() {
     const payload = { incident_id: id, part_id, quantity_used: qty, ...userAuditPayload(userId) };
     logToFile("DEBUG", "Payload Material", payload);
 
-    await supabase.from('inventory').update({ quantity_on_hand: part.quantity_on_hand - qty }).eq('id', part_id);
+    await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: part.quantity_on_hand - qty }).eq('id', part_id);
 
-    const { data, error } = await supabase.from('incident_parts').insert([payload]).select('*, inventory(name, unit_cost, sku)').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_parts').insert([payload]).select('*, inventory(name, unit_cost, sku)').single();
     if (error) {
        logToFile("ERROR", "Falha ao gravar incident_parts", { error: error.message, code: error.code, payload });
        return res.status(500).json({ error: error.message });
     }
 
     // Audit log
-    await supabase.from('incident_actions').insert([{
+    await (supabaseAdmin || supabase).from('incident_actions').insert([{
       incident_id: id, user_id: safeUserId(userId),
       descricao_acao: `[+ Material registado] ${part.name} x${qty}`
     }]);
@@ -1711,7 +1851,7 @@ async function startServer() {
     const userPerfil = (req as any).user.perfil;
 
     // Fetch the part entry
-    const { data: entry, error: fetchErr } = await supabase.from('incident_parts').select('user_id, part_id, quantity_used, inventory(name)').eq('id', partId).single();
+    const { data: entry, error: fetchErr } = await (supabaseAdmin || supabase).from('incident_parts').select('user_id, part_id, quantity_used, inventory(name)').eq('id', partId).single();
     if (fetchErr || !entry) return res.status(404).json({ error: 'Material não encontrado' });
 
     // Only creator, Gestor or Admin can delete
@@ -1720,16 +1860,16 @@ async function startServer() {
     }
 
     // Restore inventory stock
-    const { data: invItem } = await supabase.from('inventory').select('quantity_on_hand').eq('id', entry.part_id).single();
+    const { data: invItem } = await (supabaseAdmin || supabase).from('inventory').select('quantity_on_hand').eq('id', entry.part_id).single();
     if (invItem) {
-      await supabase.from('inventory').update({ quantity_on_hand: invItem.quantity_on_hand + entry.quantity_used }).eq('id', entry.part_id);
+      await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: invItem.quantity_on_hand + entry.quantity_used }).eq('id', entry.part_id);
     }
 
-    await supabase.from('incident_parts').delete().eq('id', partId);
+    await (supabaseAdmin || supabase).from('incident_parts').delete().eq('id', partId);
 
     // Audit log
     const partName = (entry as any).inventory?.name || 'Material';
-    await supabase.from('incident_actions').insert([{
+    await (supabaseAdmin || supabase).from('incident_actions').insert([{
       incident_id: id, user_id: userId,
       descricao_acao: `[- Material revertido] ${partName} x${entry.quantity_used} (stock restaurado)`
     }]);
@@ -1740,7 +1880,7 @@ async function startServer() {
   // ─── Asset Meter Readings ───────────────────────────────────────────────
   app.get("/api/assets/:id/meter-readings", authenticate, async (req, res) => {
     const { id } = req.params;
-    const { data, error } = await supabase.from('meter_readings').select('*').eq('asset_id', id).order('recorded_at', { ascending: false });
+    const { data, error } = await (supabaseAdmin || supabase).from('meter_readings').select('*').eq('asset_id', id).order('recorded_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
@@ -1753,7 +1893,7 @@ async function startServer() {
     const payload = { asset_id: id, reading_value: value, unit, user_id: userId, recorded_at: new Date().toISOString() };
 
     // Check for PM triggers based on meter reading
-    const { data: pmSchedules } = await supabase.from('pm_schedules').select('*').eq('asset_id', id);
+    const { data: pmSchedules } = await (supabaseAdmin || supabase).from('pm_schedules').select('*').eq('asset_id', id);
     const pmTrigger = (pmSchedules || []).find(s => s.threshold_value && value >= s.threshold_value);
 
     if (pmTrigger) {
@@ -1766,10 +1906,10 @@ async function startServer() {
         property_id: '1', // Default property
         created_at: new Date().toISOString()
       };
-      await supabase.from('incidents').insert([incidentPayload]);
+      await (supabaseAdmin || supabase).from('incidents').insert([incidentPayload]);
     }
 
-    const { data, error } = await supabase.from('meter_readings').insert([payload]).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('meter_readings').insert([payload]).select('*').single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
@@ -1777,7 +1917,7 @@ async function startServer() {
   // --- Labor Tracking Timer ---
   app.get("/api/incidents/:id/labor", authenticate, async (req, res) => {
     const { id } = req.params;
-    const { data, error } = await supabase.from('incident_labor').select('*, profiles!user_id(nome)').eq('incident_id', id).order('start_time', { ascending: true });
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_labor').select('*, profiles!user_id(nome)').eq('incident_id', id).order('start_time', { ascending: true });
     if (error) return res.status(500).json({ error: error.message });
     const mapped = (data || []).map((l: any) => ({ ...l, user_nome: l.profiles?.nome || 'Técnico' }));
     res.json(mapped);
@@ -1790,7 +1930,7 @@ async function startServer() {
     const payload = { incident_id: id, ...userAuditPayload(userId), start_time: new Date().toISOString() };
     logToFile("DEBUG", "Payload Timer", payload);
 
-    const { data, error } = await supabase.from('incident_labor').insert([payload]).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_labor').insert([payload]).select('*').single();
     if (error) {
       logToFile("ERROR", "Falha ao iniciar timer", { error: error.message, code: error.code, payload });
       return res.status(500).json({ error: error.message });
@@ -1802,7 +1942,7 @@ async function startServer() {
     const { laborId } = req.body;
     const stopTime = new Date().toISOString();
 
-    const { data, error } = await supabase.from('incident_labor').update({ end_time: stopTime }).eq('id', laborId).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_labor').update({ end_time: stopTime }).eq('id', laborId).select('*').single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
@@ -1810,7 +1950,7 @@ async function startServer() {
   // --- Incident Media (Photos) ---
   app.get("/api/incidents/:id/media", authenticate, async (req, res) => {
     const { id } = req.params;
-    const { data, error } = await supabase.from('incident_media').select('*').eq('incident_id', id);
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_media').select('*').eq('incident_id', id);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
@@ -1844,7 +1984,7 @@ async function startServer() {
 
     const payload = { incident_id: id, image_url: finalImageUrl, type: type || 'outro', uploaded_at: new Date().toISOString() };
 
-    const { data, error } = await supabase.from('incident_media').insert([payload]).select('*').single();
+    const { data, error } = await (supabaseAdmin || supabase).from('incident_media').insert([payload]).select('*').single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
@@ -1862,7 +2002,7 @@ async function startServer() {
   // --- PM Schedules Setup ---
   app.get("/api/pm/schedules", authenticate, async (req, res) => {
     try {
-      const { data, error } = await supabase.from('pm_schedules').select('*');
+      const { data, error } = await (supabaseAdmin || supabase).from('pm_schedules').select('*');
       if (error) {
         // Return empty array instead of 500 to prevent client crash if table is missing
         return res.json([]);
@@ -1885,7 +2025,7 @@ async function startServer() {
       }
 
       // Verify asset exists
-      const { data: assetExists, error: assetError } = await supabase.from('assets').select('id').eq('id', asset_id).single();
+      const { data: assetExists, error: assetError } = await (supabaseAdmin || supabase).from('assets').select('id').eq('id', asset_id).single();
       if (assetError || !assetExists) {
         logToFile("WARNING", "Tentativa de criar agendamento com ativo inexistente", { asset_id, user_id: userId });
         return res.status(400).json({ error: "Ativo não encontrado no sistema" });
@@ -1901,7 +2041,7 @@ async function startServer() {
         created_at: new Date().toISOString()
       };
 
-      const { data, error } = await supabase.from('pm_schedules').insert([payload]).select('*').single();
+      const { data, error } = await (supabaseAdmin || supabase).from('pm_schedules').insert([payload]).select('*').single();
       
       if (error) {
         logToFile("ERROR", "Erro ao criar agendamento de automação", { error: error.message, asset_id, task_description, user_id: userId });
@@ -1921,7 +2061,7 @@ async function startServer() {
     const now = new Date();
     // In a real app, we would query the DB for schedules due today
     /* 
-    const { data: schedules } = await supabase.from('pm_schedules').select('*');
+    const { data: schedules } = await (supabaseAdmin || supabase).from('pm_schedules').select('*');
     (schedules || []).forEach(async (pm) => {
       // Logic for triggering PMs goes here in production
     });
@@ -1939,7 +2079,7 @@ async function startServer() {
     try {
       logToFile("DEBUG", "Listando agendamentos de manutenção", { user_id: userId });
       
-      const { data, error } = await supabase.from('pm_schedules').select('*, assets(nome)');
+      const { data, error } = await (supabaseAdmin || supabase).from('pm_schedules').select('*, assets(nome)');
       if (error?.message?.includes('find the table')) {
         logToFile("INFO", "Tabela pm_schedules não existe ainda");
         return res.json([]);
@@ -1974,7 +2114,7 @@ async function startServer() {
       }
 
       // Verify asset exists
-      const { data: assetExists, error: assetError } = await supabase.from('assets').select('id').eq('id', asset_id).single();
+      const { data: assetExists, error: assetError } = await (supabaseAdmin || supabase).from('assets').select('id').eq('id', asset_id).single();
       if (assetError || !assetExists) {
         logToFile("WARNING", "Tentativa de criar agendamento com ativo inexistente", { asset_id, user_id: userId });
         return res.status(400).json({ error: "Ativo não encontrado no sistema" });
@@ -1991,7 +2131,7 @@ async function startServer() {
         is_active: true
       };
 
-      const { data, error } = await supabase.from('pm_schedules').insert([payload]).select('*').single();
+      const { data, error } = await (supabaseAdmin || supabase).from('pm_schedules').insert([payload]).select('*').single();
       
       if (error) {
         logToFile("ERROR", "Erro ao criar agendamento unificado", { error: error.message, asset_id, user_id: userId });
@@ -2189,11 +2329,11 @@ async function startServer() {
   // --- Seed Asset Categories ---
   setTimeout(async () => {
     try {
-      const { data: existing } = await supabase.from('system_settings').select('id').eq('setting_key', 'asset_categories').single();
+      const { data: existing } = await (supabaseAdmin || supabase).from('system_settings').select('id').eq('setting_key', 'asset_categories').single();
       if (!existing) {
         console.log("[Seed] A inicializar categorias de ativos...");
         const defaultCategories = ['Civil', 'AVAC', 'Electricidade', 'Segurança', 'Águas e Esgotos'];
-        await supabase.from('system_settings').insert([{
+        await (supabaseAdmin || supabase).from('system_settings').insert([{
           setting_key: 'asset_categories',
           setting_value: defaultCategories,
           description: 'Lista de categorias disponíveis para ativos'
@@ -2207,11 +2347,11 @@ async function startServer() {
   // --- Seed Incident Categories ---
   setTimeout(async () => {
     try {
-      const { data: existing } = await supabase.from('system_settings').select('id').eq('setting_key', 'incident_categories').single();
+      const { data: existing } = await (supabaseAdmin || supabase).from('system_settings').select('id').eq('setting_key', 'incident_categories').single();
       if (!existing) {
         console.log("[Seed] A inicializar categorias de incidentes...");
         const defaultCategories = ['Elétrico', 'Canalização', 'Civil', 'HVAC', 'Segurança', 'Outros'];
-        await supabase.from('system_settings').insert([{
+        await (supabaseAdmin || supabase).from('system_settings').insert([{
           setting_key: 'incident_categories',
           setting_value: defaultCategories,
           description: 'Lista de categorias de problema para incidentes'
@@ -2239,7 +2379,9 @@ async function startServer() {
     // Serve index.html for SPA routes
     if (req.path === '/' || req.path.startsWith('/cliente') || req.path.startsWith('/tecnico')) {
       try {
-        let template = fs.readFileSync(path.resolve(__dirname, "index.html"), "utf-8");
+        const indexPath = path.resolve(__dirname, "index.html");
+        console.log(`[SPA] Serving index.html from: ${indexPath}`);
+        let template = fs.readFileSync(indexPath, "utf-8");
         template = await vite.transformIndexHtml(req.originalUrl, template);
         res.status(200).set({ "Content-Type": "text/html" }).end(template);
       } catch (e) {

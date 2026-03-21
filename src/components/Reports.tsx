@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { FileText, Download, BarChart2, PieChart, Calendar, Cpu, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import * as XLSX from 'xlsx';
+import { RefreshButton } from './ui/RefreshButton';
+import { Button } from './ui/button';
 
 export default function Reports() {
   const [loading, setLoading] = useState(false);
-  const token = localStorage.getItem('token');
+  const token = (sessionStorage.getItem('token') || localStorage.getItem('token'));
 
   const exportToExcel = (data: any[], fileName: string) => {
     const worksheet = XLSX.utils.json_to_sheet(data);
@@ -90,9 +92,19 @@ export default function Reports() {
 
   return (
     <div className="space-y-8 page-enter">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-bold text-white tracking-tight">Centro de Relatórios</h2>
-        <p className="text-[10px] text-gray-500 uppercase tracking-widest">Extração de dados operacionais para análise estratégica (Excel)</p>
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xl font-bold text-white tracking-tight">Centro de Relatórios</h2>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest">Extração de dados operacionais para análise estratégica (Excel)</p>
+        </div>
+        <RefreshButton 
+          onClick={() => {
+            setLoading(true);
+            setTimeout(() => setLoading(false), 800);
+          }} 
+          loading={loading} 
+          label="Sincronizar" 
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

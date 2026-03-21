@@ -35,7 +35,7 @@ import { Avatar, AvatarFallback } from './components/ui/avatar';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(sessionStorage.getItem('token') || (sessionStorage.getItem('token') || localStorage.getItem('token')));
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [isValidating, setIsValidating] = useState(!!localStorage.getItem('token'));
+  const [isValidating, setIsValidating] = useState(!!(sessionStorage.getItem('token') || localStorage.getItem('token')));
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('token');
+    const savedToken = sessionStorage.getItem('token') || (sessionStorage.getItem('token') || localStorage.getItem('token'));
     if (savedToken) {
       const validateSession = async () => {
         try {
@@ -121,19 +121,27 @@ export default function App() {
     document.documentElement.classList.toggle('dark', newTheme === 'dark');
   };
 
-  const handleLogin = (userData: any, userToken: string) => {
+  const handleLogin = (userData: any, userToken: string, rememberMe: boolean) => {
     setUser(userData);
     setToken(userToken);
-    localStorage.setItem('token', userToken);
-    localStorage.setItem('user', JSON.stringify(userData));
+    
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('token', userToken);
+    storage.setItem('user', JSON.stringify(userData));
+    
     connectSocket(userData);
   };
 
   const handleLogout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    
+    const keys = ['token', 'user', 'cliente_token', 'cliente_user'];
+    keys.forEach(k => {
+      localStorage.removeItem(k);
+      sessionStorage.removeItem(k);
+    });
+    
     disconnectSocket();
   };
 

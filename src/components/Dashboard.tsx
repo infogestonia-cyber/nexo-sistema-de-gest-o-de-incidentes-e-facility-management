@@ -16,6 +16,7 @@ import { Progress } from './ui/progress';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { ensureArray } from '../utils/safeArray';
+import { RefreshButton } from './ui/RefreshButton';
 
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -139,7 +140,7 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
     fetchStats();
     let parsedUser = {};
     try {
-      const rawUser = localStorage.getItem('user');
+      const rawUser = (sessionStorage.getItem('user') || localStorage.getItem('user'));
       parsedUser = rawUser && rawUser !== 'undefined' ? JSON.parse(rawUser) : {};
     } catch (e) { console.error(e); }
 
@@ -154,21 +155,33 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
   }, []);
 
   const fetchStats = async () => {
+    setLoading(true);
     try {
       const res = await fetch('/api/dashboard', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       const data = await res.json();
       setStats(data);
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (!stats) return (
+  const [loading, setLoading] = useState(false);
+
+  if (!stats && loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
       <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-semibold italic">Telemetria em tempo real...</p>
+    </div>
+  );
+
+  if (!stats) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-4">
+      <AlertTriangle size={32} className="text-muted-foreground opacity-20" />
+      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-semibold italic">Dados indisponíveis</p>
     </div>
   );
 
@@ -181,6 +194,17 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-xl font-bold text-white tracking-tight">Painel de Comando</h2>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold italic flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Interface de Telemetria Operacional
+          </p>
+        </div>
+        <RefreshButton onClick={fetchStats} loading={loading} />
+      </div>
+
       {/* High-Fidelity KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpis.map((kpi, i) => (

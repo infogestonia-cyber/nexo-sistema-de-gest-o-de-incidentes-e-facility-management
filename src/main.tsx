@@ -16,7 +16,7 @@ function isTokenExpired(token: string | null): boolean {
   } catch { return true; }
 }
 
-const storedToken = localStorage.getItem('token');
+const storedToken = (sessionStorage.getItem('token') || localStorage.getItem('token'));
 if (isTokenExpired(storedToken)) {
   localStorage.removeItem('token');
   localStorage.removeItem('user');

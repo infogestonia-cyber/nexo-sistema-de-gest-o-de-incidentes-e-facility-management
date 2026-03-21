@@ -35,7 +35,7 @@ export default function Planning5Y() {
   const [searchTerm, setSearchTerm] = useState('');
   const [user] = useState<any>(() => {
     try {
-      const u = localStorage.getItem('user');
+      const u = (sessionStorage.getItem('user') || localStorage.getItem('user'));
       return u && u !== 'undefined' ? JSON.parse(u) : {};
     } catch { return {}; }
   });
@@ -53,7 +53,7 @@ export default function Planning5Y() {
   const fetchPlanning = async () => {
     try {
       const res = await fetch('/api/planning-5y', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       if (!res.ok) throw new Error('Falha ao carregar planeamento');
       const data = await res.json();
@@ -74,7 +74,7 @@ export default function Planning5Y() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify(formData)
       });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Cpu, MapPin, Calendar, Activity, Search, Filter, MoreVertical, LayoutGrid, List as ListIcon, X, Zap, ArrowUpDown, Download, FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Cpu, MapPin, Calendar, Activity, Search, Filter, MoreVertical, LayoutGrid, RefreshCw,
+  List as ListIcon, X, Zap, ArrowUpDown, Download, FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ASSET_CATEGORIES } from '../constants';
 import DigitalTwin from './DigitalTwin';
@@ -18,6 +19,9 @@ import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { Separator } from './ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from './ui/dropdown-menu';
+import { Toast } from './ui/Toast';
+import { Pagination } from './ui/Pagination';
+import { RefreshButton } from './ui/RefreshButton';
 
 export default function Assets({ 
   propertyId, 
@@ -43,10 +47,15 @@ export default function Assets({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
   const [companyInfo, setCompanyInfo] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  
+  const [toast, setToast] = useState<{ message: string | null; type: 'success' | 'error' }>({ message: null, type: 'success' });
   
   const [user] = useState<any>(() => {
     try {
-      const u = localStorage.getItem('user');
+      const u = (sessionStorage.getItem('user') || localStorage.getItem('user'));
       return u && u !== 'undefined' ? JSON.parse(u) : {};
     } catch { return {}; }
   });
@@ -89,22 +98,26 @@ export default function Assets({
   };
 
   const fetchAssets = async () => {
+    setLoading(true);
     try {
       const res = await fetch('/api/assets', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
-      const data = res.ok ? await res.json() : [];
-      setAssets(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setAssets([]);
+      if (res.ok) {
+        const data = await res.json();
+        setAssets(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchProperties = async () => {
     try {
       const res = await fetch('/api/properties', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       const data = res.ok ? await res.json() : [];
       setProperties(Array.isArray(data) ? data : []);
@@ -117,7 +130,7 @@ export default function Assets({
   const fetchCategories = async () => {
     try {
       const res = await fetch('/api/settings', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       if (res.ok) {
         const settings = await res.json();
@@ -138,7 +151,7 @@ export default function Assets({
   const fetchCompanyInfo = async () => {
     try {
       const res = await fetch('/api/company-info', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       if (res.ok) setCompanyInfo(await res.json());
     } catch (e) { console.error(e); }
@@ -148,38 +161,69 @@ export default function Assets({
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch('/api/assets', {
-        method: 'POST',
+      const url = isEditing ? `/api/assets/${editingId}` : '/api/assets';
+      const method = isEditing ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify(formData)
       });
       if (res.ok) {
+        setToast({ message: `Ativo ${isEditing ? 'atualizado' : 'adicionado'} com sucesso!`, type: 'success' });
         setIsModalOpen(false);
         fetchAssets();
-        setFormData({ 
-          nome: '', 
-          categoria: dynamicCategories[0] || ASSET_CATEGORIES[0], 
-          property_id: propertyId?.toString() || '',
-          localizacao_detalhada: '', 
-          sinais_alerta: '', 
-          parent_id: '', 
-          obsoleto: false, 
-          data_obsolescencia: '',
-          data_instalacao: new Date().toISOString().split('T')[0],
-          probabilidade_falha: 'Baixa'
-        });
+        resetForm();
       } else {
         const errorData = await res.json();
-        console.error(errorData.error || 'Erro ao adicionar ativo');
+        const errorMsg = errorData.error || `Erro ao ${isEditing ? 'atualizar' : 'adicionar'} ativo`;
+        setToast({ message: errorMsg, type: 'error' });
+        console.error(errorMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
+      setToast({ message: `Erro de rede: ${err.message}`, type: 'error' });
       console.error(err);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const resetForm = () => {
+    setFormData({ 
+      nome: '', 
+      categoria: dynamicCategories[0] || ASSET_CATEGORIES[0], 
+      property_id: propertyId?.toString() || '',
+      localizacao_detalhada: '', 
+      sinais_alerta: '', 
+      parent_id: '', 
+      obsoleto: false, 
+      data_obsolescencia: '',
+      data_instalacao: new Date().toISOString().split('T')[0],
+      probabilidade_falha: 'Baixa'
+    });
+    setIsEditing(false);
+    setEditingId(null);
+  };
+
+  const handleEdit = (asset: any) => {
+    setFormData({
+      nome: asset.nome || '',
+      categoria: asset.categoria || '',
+      property_id: asset.property_id?.toString() || '',
+      localizacao_detalhada: asset.localizacao_detalhada || '',
+      data_instalacao: asset.data_instalacao || new Date().toISOString().split('T')[0],
+      probabilidade_falha: asset.probabilidade_falha || 'Baixa',
+      sinais_alerta: asset.sinais_alerta || '',
+      parent_id: asset.parent_id?.toString() || '',
+      obsoleto: !!asset.obsoleto,
+      data_obsolescencia: asset.data_obsolescencia || ''
+    });
+    setIsEditing(true);
+    setEditingId(asset.id);
+    setIsModalOpen(true);
   };
 
   const handleSort = (key: string) => {
@@ -370,26 +414,58 @@ export default function Assets({
             </SelectContent>
           </Select>
         </div>
-        {canCreateAssets(user.perfil) && (
-          <Button
-            onClick={() => setIsModalOpen(true)}
-            className="h-9 gap-2 text-xs font-bold shadow-lg shadow-primary/10"
-          >
-            <Plus size={16} />
-            Inicializar Ativo
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+            <RefreshButton onClick={fetchAssets} loading={loading} />
+
+            {canCreateAssets(user.perfil) && (
+              <Button 
+                  onClick={() => { resetForm(); setIsModalOpen(true); }}
+                  className="bg-primary/90 hover:bg-primary text-white font-bold h-10 px-6 gap-2 shadow-lg shadow-primary/20 cursor-pointer active:scale-95 transition-all text-xs"
+              >
+                  <Plus size={16} />
+                  <span className="hidden sm:inline">Inicializar Ativo</span>
+              </Button>
+            )}
+        </div>
       </div>
 
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {paginatedAssets.map((asset) => (
+          {loading && assets.length === 0 ? (
+            [...Array(8)].map((_, i) => (
+              <Card key={i} className="h-[200px] bg-muted/20 border-border/50 animate-pulse">
+                <CardContent className="h-full flex flex-col justify-center items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-border/50"></div>
+                  <div className="h-4 w-3/4 bg-border/50 rounded"></div>
+                  <div className="h-3 w-1/2 bg-border/50 rounded"></div>
+                </CardContent>
+              </Card>
+            ))
+          ) : paginatedAssets.length > 0 ? (
+            paginatedAssets.map((asset) => (
             <Card 
               key={asset.id}
-              onClick={() => setSelectedAsset(asset)}
-              className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine hover:border-primary/20 transition-all cursor-pointer group"
+              className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine hover:border-primary/20 transition-all cursor-pointer group relative"
             >
-              <CardContent className="p-5 space-y-4">
+              <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 bg-background/50 backdrop-blur-sm border border-border/50">
+                      <MoreVertical size={12} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-32">
+                    <DropdownMenuItem onClick={() => handleEdit(asset)} className="text-xs">
+                      Editar Ativo
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSelectedAsset(asset)} className="text-xs">
+                      Ver Digital Twin
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              <CardContent className="p-5 space-y-4" onClick={() => setSelectedAsset(asset)}>
                 <div className="flex items-start justify-between">
                   <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20 group-hover:scale-110 transition-transform duration-300">
                     <Cpu size={18} />
@@ -437,7 +513,12 @@ export default function Assets({
                 </div>
               </CardContent>
             </Card>
-          ))}
+            ))
+          ) : (
+            <div className="col-span-full py-20 text-center border border-dashed border-border rounded-xl">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Nenhum ativo encontrado</p>
+            </div>
+          )}
         </div>
       ) : (
         <Card className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine overflow-hidden">
@@ -484,13 +565,22 @@ export default function Assets({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedAssets.map((asset) => (
+              {loading && assets.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-64 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-xs">Sincronizando ativos...</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : paginatedAssets.length > 0 ? (
+                paginatedAssets.map((asset) => (
                 <TableRow 
                   key={asset.id} 
                   className="cursor-pointer group h-12"
-                  onClick={() => setSelectedAsset(asset)}
                 >
-                  <TableCell className="px-4 py-3">
+                  <TableCell className="px-4 py-3" onClick={() => setSelectedAsset(asset)}>
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20 group-hover:scale-105 transition-transform shrink-0">
                         <Cpu size={14} />
@@ -501,13 +591,13 @@ export default function Assets({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => setSelectedAsset(asset)}>
                     <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">{asset.categoria}</span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => setSelectedAsset(asset)}>
                     <span className="text-xs font-medium text-muted-foreground/80">{asset.property_name}</span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => setSelectedAsset(asset)}>
                     <div className="flex items-center gap-2">
                        <Badge 
                         variant="outline" 
@@ -522,19 +612,41 @@ export default function Assets({
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
-                      <MoreVertical size={14} />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
+                          <MoreVertical size={14} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-32">
+                        <DropdownMenuItem onClick={() => handleEdit(asset)} className="text-xs">
+                          Editar Ativo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSelectedAsset(asset)} className="text-xs">
+                          Ver Digital Twin
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic text-xs">
+                    Nenhum ativo encontrado.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </Card>
       )}
 
-      {/* Modal Novo Ativo */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      {/* Modal Novo Ativo / Editar */}
+      <Dialog open={isModalOpen} onOpenChange={(open) => {
+        setIsModalOpen(open);
+        if (!open) resetForm();
+      }}>
         <DialogContent className="max-w-2xl bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl">
           <DialogHeader className="space-y-1">
              <div className="flex items-center gap-3">
@@ -542,8 +654,12 @@ export default function Assets({
                    <Cpu size={20} />
                 </div>
                 <div>
-                  <DialogTitle className="text-lg font-bold tracking-tight">Inicializar Ativo</DialogTitle>
-                  <DialogDescription className="text-xs text-muted-foreground/60">Registar novo equipamento no inventário técnico do sistema.</DialogDescription>
+                  <DialogTitle className="text-lg font-bold tracking-tight">
+                    {isEditing ? 'Editar Ativo' : 'Inicializar Ativo'}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground/60">
+                    {isEditing ? 'Atualize as informações do equipamento no sistema.' : 'Registar novo equipamento no inventário técnico do sistema.'}
+                  </DialogDescription>
                 </div>
              </div>
           </DialogHeader>
@@ -636,9 +752,9 @@ export default function Assets({
             </div>
 
             <DialogFooter className="gap-3 pt-6 border-t border-border/30">
-              <Button type="button" variant="ghost" className="flex-1 text-xs font-semibold h-10" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+              <button type="button" className="flex-1 text-xs font-semibold h-10 hover:bg-muted/10 rounded-md transition-colors" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</button>
               <Button type="submit" disabled={submitting} className="flex-1 font-bold h-10 shadow-lg shadow-primary/20">
-                {submitting ? 'A processar...' : 'Confirmar Inventário'}
+                {submitting ? 'A processar...' : (isEditing ? 'Guardar Alterações' : 'Confirmar Inventário')}
               </Button>
             </DialogFooter>
           </form>
@@ -646,48 +762,18 @@ export default function Assets({
       </Dialog>
 
       {/* Pagination Control */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-6 border-t border-border/30">
-          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50">
-            Mostrando {(currentPage - 1) * itemsPerPage + 1} a {Math.min(currentPage * itemsPerPage, sortedAndFilteredAssets.length)} de {sortedAndFilteredAssets.length} ativos
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="h-8 px-3 gap-1.5 text-[10px] uppercase font-bold tracking-tighter border-border/50 hover:bg-muted/10"
-            >
-              <ChevronLeft size={12} /> Anterior
-            </Button>
-            <div className="flex items-center gap-1 mx-2">
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentPage(i + 1)}
-                  className={`w-7 h-7 rounded-md text-[10px] font-bold transition-all ${
-                    currentPage === i + 1 
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' 
-                      : 'text-muted-foreground hover:bg-muted/10'
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="h-8 px-3 gap-1.5 text-[10px] uppercase font-bold tracking-tighter border-border/50 hover:bg-muted/10"
-            >
-              Próximo <ChevronRight size={12} />
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={currentPage}
+        totalItems={sortedAndFilteredAssets.length}
+        itemsPerPage={itemsPerPage}
+        onPageChange={setCurrentPage}
+      />
+
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast({ ...toast, message: null })} 
+      />
     </div>
   );
 }

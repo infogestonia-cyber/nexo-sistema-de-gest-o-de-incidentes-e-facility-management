@@ -11,7 +11,11 @@ interface RequestOptions extends RequestInit {
 
 async function apiRequest(endpoint: string, options: RequestOptions = {}) {
   const isClientPortal = window.location.pathname.startsWith('/cliente');
-  const token = localStorage.getItem(isClientPortal ? 'cliente_token' : 'token');
+  const tokenKey = isClientPortal ? 'cliente_token' : 'token';
+  
+  // Try sessionStorage first, then localStorage
+  const token = sessionStorage.getItem(tokenKey) || localStorage.getItem(tokenKey);
+  
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -51,10 +55,12 @@ async function apiRequest(endpoint: string, options: RequestOptions = {}) {
 }
 
 function handleGlobalLogout() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  localStorage.removeItem('cliente_token');
-  localStorage.removeItem('cliente_user');
+  const keys = ['token', 'user', 'cliente_token', 'cliente_user'];
+  keys.forEach(k => {
+    localStorage.removeItem(k);
+    sessionStorage.removeItem(k);
+  });
+
   // Trigger a window event or reload to catch state in App.tsx
   window.dispatchEvent(new Event('auth-invalidation'));
   window.location.reload(); // Hard reload to ensure clean state

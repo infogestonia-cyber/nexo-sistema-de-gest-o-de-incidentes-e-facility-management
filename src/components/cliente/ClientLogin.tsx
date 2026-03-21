@@ -68,7 +68,7 @@ export default function ClientLogin({ onLogin }: Props) {
                 type="text"
                 value={codigo}
                 onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-                className="w-full pl-11 pr-4 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-xs text-white placeholder:text-gray-700 font-mono"
+                className="w-full pl-11 pr-4 py-3 bg-background border border-input rounded-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-xs text-foreground placeholder:text-muted-foreground font-mono"
                 placeholder="CLT-001"
                 required
                 autoComplete="off"
@@ -85,7 +85,7 @@ export default function ClientLogin({ onLogin }: Props) {
                 type={showPin ? 'text' : 'password'}
                 value={pin}
                 onChange={(e) => setPin(e.target.value.slice(0, 6))}
-                className="w-full pl-11 pr-12 py-3 bg-white/5 border border-brand-border rounded-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-xs text-white placeholder:text-gray-700 font-mono tracking-widest"
+                className="w-full pl-11 pr-12 py-3 bg-background border border-input rounded-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-xs text-foreground placeholder:text-muted-foreground font-mono tracking-widest"
                 placeholder="••••••"
                 maxLength={6}
                 required

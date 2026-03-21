@@ -33,6 +33,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from './ui/dropdown-menu';
+import { Pagination } from './ui/Pagination';
+import { RefreshButton } from './ui/RefreshButton';
 
 type MaintenanceTab = 'executions' | 'automation' | 'history';
 
@@ -52,10 +54,12 @@ export default function Maintenance() {
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
 
   const [currentUser] = useState<any>(() => {
     try {
-      const u = localStorage.getItem('user');
+      const u = (sessionStorage.getItem('user') || localStorage.getItem('user'));
       return u && u !== 'undefined' ? JSON.parse(u) : {};
     } catch { return {}; }
   });
@@ -84,7 +88,7 @@ export default function Maintenance() {
 
   const fetchData = async () => {
     try {
-      const h = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
+      const h = { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` };
       const [execRes, schedRes, histRes, assetsRes, usersRes] = await Promise.all([
         fetch('/api/maintenance/executions', { headers: h }),
         fetch('/api/maintenance/schedules', { headers: h }),
@@ -118,13 +122,16 @@ export default function Maintenance() {
     try {
       const res = await fetch('/api/maintenance-plans', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` },
         body: JSON.stringify(formData)
       });
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
         setFormData({ asset_id: '', tipo: 'Preventiva', periodicidade: 'Mensal', proxima_data: format(new Date(), 'yyyy-MM-dd'), responsavel_id: '', custo_estimado: '', descricao: '' });
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'Ocorreu um erro ao criar o plano de manutenção.');
       }
     } finally {
       setSubmitting(false);
@@ -140,7 +147,7 @@ export default function Maintenance() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}`
         },
         body: JSON.stringify({
           ...automationFormData,
@@ -152,6 +159,9 @@ export default function Maintenance() {
         setIsAutomationModalOpen(false);
         setAutomationFormData({ asset_id: '', task_description: '', frequency_days: '', threshold_value: '', categoria: 'Preventiva' });
         fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'A automação falhou. Verifique se definiu a frequência ou se as tabelas (pm_schedules) estão ativas na Base de Dados.');
       }
     } finally {
       setSubmitting(false);
@@ -164,7 +174,7 @@ export default function Maintenance() {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` 
         },
         body: JSON.stringify({ observations: 'Concluído via interface de manutenção' })
       });
@@ -182,7 +192,7 @@ export default function Maintenance() {
     try {
       const res = await fetch(`/api/maintenance-plans/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
       });
       if (res.ok) {
         fetchData();
@@ -204,14 +214,13 @@ export default function Maintenance() {
     return matchesSearch && matchesMonth;
   });
 
+  const paginatedPlans = filteredPlans.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">A carregar manutenção...</p>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -237,6 +246,7 @@ export default function Maintenance() {
         </div>
 
         <div className="flex items-center gap-2">
+          <RefreshButton onClick={fetchData} loading={loading} />
            {activeTab === 'executions' && canManageMaintenance(currentUser.perfil) && (
             <Button size="sm" className="h-9 gap-2 text-xs font-bold" onClick={() => setIsModalOpen(true)}>
               <Plus size={16} /> Novo Plano
@@ -309,84 +319,102 @@ export default function Maintenance() {
             </div>
 
             {viewMode === 'list' ? (
-              <Card className="shadow-none border-border overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-[10px] uppercase font-bold h-10">Ativo</TableHead>
-                      <TableHead className="text-[10px] uppercase font-bold h-10">Tipo</TableHead>
-                      <TableHead className="text-[10px] uppercase font-bold h-10">Periodicidade</TableHead>
-                      <TableHead className="text-[10px] uppercase font-bold h-10">Responsável</TableHead>
-                      <TableHead className="text-[10px] uppercase font-bold h-10">Vencimento</TableHead>
-                      <TableHead className="w-12 h-10"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPlans.map(plan => {
-                      const daysLeft = Math.ceil((new Date(plan.proxima_data).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
-                      return (
-                        <TableRow key={plan.id} className="cursor-pointer group h-14" onClick={() => setSelectedPlan(plan)}>
-                          <TableCell className="text-xs font-semibold">{plan.asset_name}</TableCell>
-                          <TableCell>
-                            <Badge variant={plan.tipo === 'Preventiva' ? 'outline' : 'destructive'} className="text-[9px] h-4 uppercase font-bold">
-                              {plan.tipo}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-                            {plan.periodicidade}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <div className="w-5 h-5 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden shrink-0">
-                                <User size={10} className="text-muted-foreground" />
-                              </div>
-                              <span className="text-xs text-muted-foreground">{plan.responsavel_nome}</span>
+              <>
+                <Card className="shadow-none border-border overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-muted/30">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-[10px] uppercase font-bold h-10">Ativo</TableHead>
+                        <TableHead className="text-[10px] uppercase font-bold h-10">Tipo</TableHead>
+                        <TableHead className="text-[10px] uppercase font-bold h-10">Periodicidade</TableHead>
+                        <TableHead className="text-[10px] uppercase font-bold h-10">Responsável</TableHead>
+                        <TableHead className="text-[10px] uppercase font-bold h-10">Vencimento</TableHead>
+                        <TableHead className="w-12 h-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading && plans.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-64 text-center">
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-xs">Sincronizando protocolos...</p>
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span className="text-xs font-mono">{plan.proxima_data}</span>
-                              <span className={`text-[9px] font-bold uppercase ${daysLeft <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                {daysLeft <= 0 ? 'Vencido' : `${daysLeft} dias restantes`}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                             <DropdownMenu>
-                              <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
-                                  <MoreVertical size={14} />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-48 text-xs">
-                                <DropdownMenuLabel>Gestão de Plano</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => handleMarkComplete(plan)}>
-                                  <Check size={14} className="mr-2" /> Concluir Trabalho
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Edit2 size={14} className="mr-2" /> Editar Plano
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(plan.id)}>
-                                  <Trash2 size={14} className="mr-2" /> Eliminar Plano
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                    {filteredPlans.length === 0 && (
+                      ) : paginatedPlans.length > 0 ? (
+                        paginatedPlans.map(plan => {
+                        const daysLeft = Math.ceil((new Date(plan.proxima_data).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+                        return (
+                          <TableRow key={plan.id} className="cursor-pointer group h-14" onClick={() => setSelectedPlan(plan)}>
+                            <TableCell className="text-xs font-semibold">{plan.asset_name}</TableCell>
+                            <TableCell>
+                              <Badge variant={plan.tipo === 'Preventiva' ? 'outline' : 'destructive'} className="text-[9px] h-4 uppercase font-bold">
+                                {plan.tipo}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
+                              {plan.periodicidade}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden shrink-0">
+                                  <User size={10} className="text-muted-foreground" />
+                                </div>
+                                <span className="text-xs text-muted-foreground">{plan.responsavel_nome}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="text-xs font-mono">{plan.proxima_data}</span>
+                                <span className={`text-[9px] font-bold uppercase ${daysLeft <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                  {daysLeft <= 0 ? 'Vencido' : `${daysLeft} dias restantes`}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                               <DropdownMenu>
+                                <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 group-hover:text-foreground">
+                                    <MoreVertical size={14} />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48 text-xs">
+                                  <DropdownMenuLabel>Gestão de Plano</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => handleMarkComplete(plan)}>
+                                    <Check size={14} className="mr-2" /> Concluir Trabalho
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem>
+                                    <Edit2 size={14} className="mr-2" /> Editar Plano
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(plan.id)}>
+                                    <Trash2 size={14} className="mr-2" /> Eliminar Plano
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
                       <TableRow>
                         <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic text-xs">
-                          Nenhum plano pendente neste período.
+                           Nenhum plano pendente neste período.
                         </TableCell>
                       </TableRow>
                     )}
-                  </TableBody>
-                </Table>
-              </Card>
+                    </TableBody>
+                  </Table>
+                </Card>
+                <Pagination
+                  currentPage={currentPage}
+                  totalItems={filteredPlans.length}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                />
+              </>
             ) : (
               <Card className="shadow-none border-border overflow-hidden p-4">
                 <div className="grid grid-cols-7 gap-px bg-border rounded-lg border border-border overflow-hidden">
@@ -508,21 +536,38 @@ export default function Maintenance() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {history.map(h => (
-                  <TableRow key={h.id} className="h-14">
-                    <TableCell className="text-xs font-semibold">{h.assets?.nome}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[8px] h-3.5 bg-muted/20 text-muted-foreground">{h.tipo}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {h.data_conclusao ? format(new Date(h.data_conclusao), 'dd/MM/yyyy HH:mm') : '—'}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{h.profiles?.nome}</TableCell>
-                    <TableCell className="text-right">
-                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30"><Eye size={14} /></Button>
+                {loading && history.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-32 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Lendo histórico...</p>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : history.length > 0 ? (
+                  history.map(h => (
+                    <TableRow key={h.id} className="h-14">
+                      <TableCell className="text-xs font-semibold">{h.assets?.nome}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[8px] h-3.5 bg-muted/20 text-muted-foreground">{h.tipo}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">
+                        {h.data_conclusao ? format(new Date(h.data_conclusao), 'dd/MM/yyyy HH:mm') : '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{h.profiles?.nome}</TableCell>
+                      <TableCell className="text-right">
+                         <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30"><Eye size={14} /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic text-xs">
+                      Nenhum histórico encontrado.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </Card>
