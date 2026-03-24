@@ -45,8 +45,9 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 console.log(`[Server] Starting in ${process.env.NODE_ENV === 'production' ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 
 // Logging Utility - Forcing path to project root
+const isProduction = process.env.NODE_ENV === 'production';
 const LOG_DIR = path.join(__dirname, "logs");
-if (!fs.existsSync(LOG_DIR)) {
+if (!isProduction && !fs.existsSync(LOG_DIR)) {
   console.log(`[Server] Creating log directory at: ${LOG_DIR}`);
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
@@ -55,7 +56,16 @@ const logFilePath = path.join(LOG_DIR, "server.log");
 const logToFile = (type: "INFO" | "ERROR" | "DEBUG" | "WARNING", message: string, data?: any) => {
   const timestamp = new Date().toISOString();
   const logEntry = `[${timestamp}] [${type}] ${message} ${data ? JSON.stringify(data) : ""}\n`;
-  fs.appendFileSync(logFilePath, logEntry);
+  
+  // No Vercel (read-only filesystem), apenas logamos no terminal em produção
+  if (!isProduction) {
+    try {
+      fs.appendFileSync(logFilePath, logEntry);
+    } catch (e) {
+      console.warn("[Logger] Falha ao escrever no ficheiro de log (FS read-only?)");
+    }
+  }
+  
   if (type === "ERROR") console.error(logEntry);
   else console.log(logEntry);
 };
@@ -74,16 +84,18 @@ const safeUserId = (id: any) => {
   return cleanId === DEV_ADMIN_ID ? null : id;
 };
 
-async function startServer() {
-  console.log("!!! STARTING SERVER - VERSION DEBUG 1.0 !!!");
-  const app = express();
-  const httpServer = createServer(app);
-  const io = new Server(httpServer, { cors: { origin: "*" } });
+// --- Vercel Compatibility & Initialization ---
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, { cors: { origin: "*" } });
 
+async function startServer() {
+  console.log("!!! STARTING SERVER - VERSION DEBUG 1.1 !!!");
+  
   // Rate Limiter configuration
   const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Increased for automated testing
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: { error: "Muitas tentativas de login. Por favor, tente novamente após 15 minutos." },
     standardHeaders: true,
     legacyHeaders: false,
@@ -99,8 +111,6 @@ async function startServer() {
 
   const activeUsers = new Map();
 
-  // Removed local fallbacks to ensure strict DB usage
-
   io.on("connection", (socket) => {
     socket.on("join-room", ({ roomId, user }) => {
       socket.join(roomId);
@@ -115,6 +125,8 @@ async function startServer() {
       }
     });
   });
+
+  // ... (rest of the app.get/post/patch calls will be applied to the top-level 'app' instance)
 
   const authenticate = async (req: Request, res: Response, next: NextFunction) => {
     const token = req.headers.authorization?.split(" ")[1];
@@ -2808,33 +2820,21 @@ async function startServer() {
     });
     res.status(status).json({ error: "Erro interno do servidor", details: process.env.NODE_ENV === 'production' ? null : err.message });
   });
-
-  // Initialize Maintenance Scheduler
-  let maintenanceScheduler: MaintenanceScheduler | null = null;
-
-  const PORT = process.env.PORT || 3000;
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Nexo - SGFM running on http://localhost:${PORT}`);
-    logToFile("INFO", `Servidor Nexo SGFM iniciado e à escuta na porta ${PORT}`);
-
-    // Start the maintenance scheduler
-    maintenanceScheduler = new MaintenanceScheduler(supabase, logToFile, io);
-    maintenanceScheduler.start();
-    logToFile("INFO", "Iniciando Maintenance Scheduler - verificará agendamentos a cada 1 hora");
-  });
-
-  // Graceful shutdown handler
-  process.on("SIGINT", async () => {
-    logToFile("INFO", "Recebido SIGINT - iniciando shutdown gracioso");
-    if (maintenanceScheduler) {
-      maintenanceScheduler.stop();
-      logToFile("INFO", "Maintenance Scheduler parado");
-    }
-    httpServer.close(() => {
-      logToFile("INFO", "Servidor HTTP encerrado");
-      process.exit(0);
-    });
-  });
 }
 
-startServer();
+// Prepare for Vercel: Export the app
+export default app;
+
+// Initial execution of the server setup logic & Listen
+startServer().then(() => {
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    const PORT = process.env.PORT || 3000;
+    httpServer.listen(PORT, "0.0.0.0", () => {
+      console.log(`Nexo - SGFM running on http://localhost:${PORT}`);
+      logToFile("INFO", `Servidor Nexo SGFM iniciado e à escuta na porta ${PORT}`);
+      
+      const maintenanceScheduler = new MaintenanceScheduler(supabase, logToFile, io);
+      maintenanceScheduler.start();
+    });
+  }
+});
