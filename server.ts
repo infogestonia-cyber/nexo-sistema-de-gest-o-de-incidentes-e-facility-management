@@ -2748,25 +2748,25 @@ async function startServer() {
     }
   }, 4200);
 
-  // Modo desenvolvimento com Vite middleware (Sempre ativo agora)
-  const vite = await createViteServer({
-    server: {
-      middlewareMode: true,
-      allowedHosts: true as any,
-    },
-    appType: "spa"
-  });
-  app.use(vite.middlewares);
-  // SPA routing: redirect unknown routes to index.html
-  app.get('*', async (req, res, next) => {
-    // API routes and static assets already handled by vite.middlewares or previous routes
-    if (req.originalUrl.startsWith('/api') || req.originalUrl.includes('.')) return next();
+  // --- Frontend Serving & Routing ---
+  const isProduction = process.env.NODE_ENV === 'production';
 
-    // Serve index.html for SPA routes
-    if (req.path === '/' || req.path.startsWith('/cliente') || req.path.startsWith('/tecnico')) {
+  if (!isProduction) {
+    // Development mode with Vite middleware
+    logToFile("INFO", "Iniciando servidor em modo DESENVOLVIMENTO com Vite");
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        allowedHosts: true as any,
+      },
+      appType: "spa"
+    });
+    app.use(vite.middlewares);
+
+    app.get('*', async (req, res, next) => {
+      if (req.originalUrl.startsWith('/api') || req.originalUrl.includes('.')) return next();
       try {
         const indexPath = path.resolve(__dirname, "index.html");
-        console.log(`[SPA] Serving index.html from: ${indexPath}`);
         let template = fs.readFileSync(indexPath, "utf-8");
         template = await vite.transformIndexHtml(req.originalUrl, template);
         res.status(200).set({ "Content-Type": "text/html" }).end(template);
@@ -2774,10 +2774,29 @@ async function startServer() {
         vite.ssrFixStacktrace(e as Error);
         next(e);
       }
-    } else {
-      next(); // Let other middleware or default Vite handling take over
-    }
-  });
+    });
+  } else {
+    // Production mode serving from dist folder
+    logToFile("INFO", "Iniciando servidor em modo PRODUÇÃO");
+    const distPath = path.resolve(process.cwd(), "dist");
+    
+    // Serve static files from dist
+    app.use(express.static(distPath));
+
+    app.get('*', (req, res, next) => {
+      // API routes already handled before this
+      if (req.originalUrl.startsWith('/api')) return next();
+      
+      // Serve index.html for all SPA routes
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        logToFile("WARNING", "Ficheiro index.html não encontrado em dist", { distPath });
+        res.status(404).send("Aplicação não encontrada. Verifique o build.");
+      }
+    });
+  }
 
   // Global Error Handler Middleware
   app.use((err: any, req: any, res: any, next: any) => {
@@ -2793,9 +2812,10 @@ async function startServer() {
   // Initialize Maintenance Scheduler
   let maintenanceScheduler: MaintenanceScheduler | null = null;
 
-  httpServer.listen(3000, "0.0.0.0", () => {
-    console.log(`Nexo - SGFM running on http://localhost:3000`);
-    logToFile("INFO", "Servidor Nexo SGFM iniciado e à escuta na porta 3000");
+  const PORT = process.env.PORT || 3000;
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`Nexo - SGFM running on http://localhost:${PORT}`);
+    logToFile("INFO", `Servidor Nexo SGFM iniciado e à escuta na porta ${PORT}`);
 
     // Start the maintenance scheduler
     maintenanceScheduler = new MaintenanceScheduler(supabase, logToFile, io);
