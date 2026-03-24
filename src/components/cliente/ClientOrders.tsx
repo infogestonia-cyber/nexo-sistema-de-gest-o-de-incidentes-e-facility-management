@@ -8,8 +8,8 @@ import { Badge } from '../ui/badge';
 
 const FILTERS = [
   { id: 'all', label: 'Todas' },
+  { id: 'Aberto', label: 'Pendentes' },
   { id: 'Em progresso', label: 'Em Curso' },
-  { id: 'Em validação', label: 'Validar' },
   { id: 'Resolvido', label: 'Concluídas' },
 ];
 

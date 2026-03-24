@@ -51,7 +51,10 @@ export default function ClientNewRequest() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!descricao || !categoria || !propertyId) { setError('Preencha a descrição, categoria e localização.'); return; }
+    if (!descricao || !categoria || !propertyId || !ativo) { 
+      setError('Preencha a descrição, categoria, localização e equipamento.'); 
+      return; 
+    }
     setError('');
     setLoading(true);
     try {
@@ -93,7 +96,16 @@ export default function ClientNewRequest() {
           <div className="relative">
             <select
               value={propertyId}
-              onChange={e => setPropertyId(e.target.value)}
+              onChange={e => {
+                const val = e.target.value;
+                setPropertyId(val);
+                const filtered = ativos.filter(a => String(a.property_id) === String(val));
+                if (filtered.length === 1) {
+                  setAtivo(filtered[0].id.toString());
+                } else {
+                  setAtivo('');
+                }
+              }}
               className="w-full px-4 py-4 bg-white/[0.04] border border-white/10 rounded-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 appearance-none"
             >
               <option value="">Selecionar propriedade...</option>
@@ -120,20 +132,24 @@ export default function ClientNewRequest() {
 
         {/* Ativo */}
         <div className="space-y-2">
-          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Equipamento Afetado</label>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Equipamento Afetado *</label>
           <div className="relative">
             <select
               value={ativo}
               onChange={e => setAtivo(e.target.value)}
-              className="w-full px-4 py-4 bg-white/[0.04] border border-white/10 rounded-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 appearance-none"
+              disabled={!propertyId}
+              className="w-full px-4 py-4 bg-white/[0.04] border border-white/10 rounded-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 appearance-none disabled:opacity-40"
             >
-              <option value="">Selecionar equipamento (Opcional)</option>
-              {ativos.filter(a => !propertyId || a.property_id === propertyId).map(a => (
+              <option value="">{propertyId ? "Selecionar equipamento..." : "Selecione a localização primeiro"}</option>
+              {ativos.filter(a => String(a.property_id) === String(propertyId)).map(a => (
                 <option key={a.id} value={a.id}>{a.nome}</option>
               ))}
             </select>
             <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
           </div>
+          {propertyId && ativos.filter(a => String(a.property_id) === String(propertyId)).length === 0 && (
+            <p className="text-[10px] text-red-400 font-bold mt-1">⚠️ Esta unidade não possui equipamentos cadastrados. Não é possível abrir o pedido.</p>
+          )}
         </div>
 
         {/* Descrição */}
@@ -172,7 +188,7 @@ export default function ClientNewRequest() {
 
         <motion.button
           type="submit"
-          disabled={loading || !descricao || !categoria || !propertyId}
+          disabled={loading || !descricao || !categoria || !propertyId || !ativo || (propertyId && ativos.filter(a => String(a.property_id) === String(propertyId)).length === 0)}
           whileTap={{ scale: 0.97 }}
           className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-black text-sm uppercase tracking-widest rounded-none flex items-center justify-center gap-2"
         >

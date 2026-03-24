@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { ensureArray } from '../utils/safeArray';
 import {
   Plus, Building2, User, Hash, Search, X, Globe,
   Cpu, Activity, AlertCircle, Wrench, ChevronRight,
-  ArrowLeft, MapPin, Settings, Eye, Info
+  ArrowLeft, MapPin, Settings, Eye, Info, LayoutGrid, History, Shield
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { canCreateProperties } from '../utils/permissions';
@@ -24,6 +26,7 @@ import { Label } from './ui/label';
 export default function Properties({ onSelectProperty }: { onSelectProperty: (id: string) => void }) {
   const [properties, setProperties] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
+  const [inspections, setInspections] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -48,6 +51,7 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
     inquilino: '',
     referencia_interna: ''
   });
+  const [activeTab, setActiveTab] = useState<'info' | 'assets' | 'inspections'>('info');
 
   useEffect(() => {
     fetchAll();
@@ -58,16 +62,19 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
     try {
       const token = (sessionStorage.getItem('token') || localStorage.getItem('token'));
       const headers = { Authorization: `Bearer ${token}` };
-      const [propRes, assetRes] = await Promise.all([
+      const [propRes, assetRes, inspectionRes] = await Promise.all([
         fetch('/api/properties', { headers }),
         fetch('/api/assets', { headers }),
+        fetch('/api/asset-inspections', { headers })
       ]);
 
       const propData = propRes.ok ? await propRes.json() : [];
       const assetData = assetRes.ok ? await assetRes.json() : [];
+      const inspectionData = inspectionRes.ok ? await inspectionRes.json() : [];
 
       setProperties(Array.isArray(propData) ? propData : []);
       setAssets(Array.isArray(assetData) ? assetData : []);
+      setInspections(Array.isArray(inspectionData) ? inspectionData : []);
     } catch (e) {
       console.error(e);
       setProperties([]);
@@ -125,6 +132,12 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
   };
 
   const getAssetsForProperty = (propId: string) => ensureArray<any>(assets).filter(a => a.property_id === propId);
+
+  const getInspectionsForProperty = (propId: string) => {
+    const propAssets = getAssetsForProperty(propId);
+    const assetIds = propAssets.map(a => a.id);
+    return ensureArray<any>(inspections).filter(i => assetIds.includes(i.asset_id));
+  };
 
   const filteredProperties = ensureArray<any>(properties).filter(p =>
     !search ||
@@ -184,7 +197,40 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Tabs Navigation */}
+            <div className="flex items-center gap-1 bg-muted/20 p-1 border border-border/50 rounded-xl w-fit">
+              <Button
+                variant={activeTab === 'info' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab('info')}
+                className={`h-9 px-6 gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-background shadow-sm border border-border/30' : 'text-muted-foreground/60 hover:text-foreground'}`}
+              >
+                <LayoutGrid size={13} />
+                Geral
+              </Button>
+              <Button
+                variant={activeTab === 'assets' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab('assets')}
+                className={`h-9 px-6 gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'assets' ? 'bg-background shadow-sm border border-border/30' : 'text-muted-foreground/60 hover:text-foreground'}`}
+              >
+                <Cpu size={13} />
+                Equipamentos
+              </Button>
+              <Button
+                variant={activeTab === 'inspections' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab('inspections')}
+                className={`h-9 px-6 gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'inspections' ? 'bg-background shadow-sm border border-border/30' : 'text-muted-foreground/60 hover:text-foreground'}`}
+              >
+                <History size={13} />
+                Inspecções
+              </Button>
+            </div>
+
+            <div className="min-h-[500px]">
+              {activeTab === 'info' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="lg:col-span-2 space-y-6">
                 {/* Main Info Card */}
                 <Card className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine overflow-hidden">
@@ -363,11 +409,11 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
                          <p className="text-sm font-bold tracking-tight text-white leading-tight">Coordenadas Ativas</p>
                       </div>
                     </div>
-                    <div className="p-3 bg-white/5 rounded-lg border border-white/10 backdrop-blur-md">
-                       <p className="text-xs leading-relaxed text-zinc-300 font-medium">
-                         {selectedProperty.endereco}
-                       </p>
-                    </div>
+                        <div className="p-3 bg-white/5 rounded-lg border border-white/10 backdrop-blur-md">
+                           <p className="text-xs leading-relaxed text-zinc-300 font-medium italic">
+                             {selectedProperty.endereco}
+                           </p>
+                        </div>
                     <div className="flex items-center justify-between pt-2">
                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-1.5">
                           <Globe size={10} /> Sincronizado c/ Cloud
@@ -381,6 +427,173 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
                 </Card>
               </div>
             </div>
+          ) : activeTab === 'assets' ? (
+            <Card className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <CardHeader className="pb-4 border-b border-border/30 bg-muted/5 flex flex-row items-center justify-between">
+                 <CardTitle className="text-sm font-bold flex items-center gap-2">
+                   <Cpu size={16} className="text-primary" />
+                   Inventário de Equipamentos
+                 </CardTitle>
+                 <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-[10px] font-black uppercase tracking-tight">
+                   {getAssetsForProperty(selectedProperty.id).length} Unidades
+                 </Badge>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-muted/10">
+                    <TableRow className="hover:bg-transparent border-border/30">
+                      <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest px-8">Equipamento</TableHead>
+                      <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest">Sistema</TableHead>
+                      <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest text-center">Risco de Falha</TableHead>
+                      <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest text-right pr-8">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {getAssetsForProperty(selectedProperty.id).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-60 text-center">
+                          <div className="flex flex-col items-center justify-center opacity-20">
+                            <Cpu size={48} className="mb-4" />
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Nenhum Ativo Detectado</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      getAssetsForProperty(selectedProperty.id)
+                        .slice((assetsCurrentPage - 1) * ITEMS_PER_PAGE_ASSETS, assetsCurrentPage * ITEMS_PER_PAGE_ASSETS)
+                        .map((asset: any) => (
+                        <TableRow key={asset.id} className="border-border/30 hover:bg-muted/5 transition-colors group h-16">
+                          <TableCell className="px-8 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-muted/20 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                              <Cpu size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold group-hover:text-primary transition-colors">{asset.nome}</span>
+                              <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-widest">ID: {asset.id.split('-')[0]}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-[8px] px-1.5 h-4 bg-zinc-500/5 border-none font-bold text-muted-foreground/70 uppercase">{asset.categoria || 'Geral'}</Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge 
+                              variant="outline" 
+                              className={`text-[8px] px-2 h-4 border-none font-black uppercase tracking-tight ${
+                                asset.probabilidade_falha === 'Alta' ? 'bg-rose-500/15 text-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.15)]' :
+                                asset.probabilidade_falha === 'Média' ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'
+                              }`}
+                            >
+                              {asset.probabilidade_falha || 'Nominal'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right pr-8">
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-9 px-4 text-[10px] font-black uppercase tracking-widest gap-2 group-hover:bg-primary group-hover:text-white transition-all rounded-lg"
+                              onClick={() => onSelectProperty(asset.id)} // View Digital Twin
+                            >
+                              Digital Twin <ChevronRight size={14} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+                {getAssetsForProperty(selectedProperty.id).length > ITEMS_PER_PAGE_ASSETS && (
+                  <div className="p-4 border-t border-border/30">
+                    <Pagination
+                      currentPage={assetsCurrentPage}
+                      totalPages={Math.ceil(getAssetsForProperty(selectedProperty.id).length / ITEMS_PER_PAGE_ASSETS)}
+                      onPageChange={setAssetsCurrentPage}
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <CardHeader className="pb-4 border-b border-border/30 bg-muted/5">
+                 <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-bold flex items-center gap-2">
+                      <History size={16} className="text-primary" />
+                      Historial de Inspecções na Propriedade
+                    </CardTitle>
+                    <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest h-6 px-3 bg-muted border-none">
+                      {getInspectionsForProperty(selectedProperty.id).length} Registos
+                    </Badge>
+                 </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                 <Table>
+                   <TableHeader className="bg-muted/10">
+                      <TableRow className="hover:bg-transparent border-border/30">
+                        <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest px-8">Data da Visita</TableHead>
+                        <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest">Equipamento Alvo</TableHead>
+                        <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest text-center">Estado Geral</TableHead>
+                        <TableHead className="text-[10px] h-11 font-black uppercase tracking-widest text-right pr-8">Técnico Responsável</TableHead>
+                      </TableRow>
+                   </TableHeader>
+                   <TableBody>
+                     {getInspectionsForProperty(selectedProperty.id).length === 0 ? (
+                       <TableRow>
+                         <TableCell colSpan={4} className="h-60 text-center">
+                           <div className="flex flex-col items-center justify-center opacity-20">
+                             <History size={48} className="mb-4" />
+                             <p className="text-[10px] font-black uppercase tracking-[0.2em]">Sem Histórico de Inspecção</p>
+                           </div>
+                         </TableCell>
+                       </TableRow>
+                     ) : (
+                       getInspectionsForProperty(selectedProperty.id)
+                         .sort((a, b) => new Date(b.data_inspecao).getTime() - new Date(a.data_inspecao).getTime())
+                         .slice(0, 10) // Show last 10
+                         .map((i: any) => {
+                           const asset = assets.find(a => a.id === i.asset_id);
+                           return (
+                             <TableRow key={i.id} className="border-border/30 hover:bg-muted/5 transition-colors h-16 group">
+                                <TableCell className="px-8 font-mono text-[11px] font-bold">
+                                  {format(new Date(i.data_inspecao), 'dd MMM yyyy', { locale: ptBR })}
+                                </TableCell>
+                                <TableCell>
+                                   <div className="flex flex-col">
+                                      <span className="text-sm font-bold group-hover:text-primary transition-colors">{asset?.nome || 'Ativo Externo'}</span>
+                                      <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-widest">{asset?.categoria || 'Hardware'}</span>
+                                   </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge 
+                                    variant="outline" 
+                                    className={`text-[8px] px-2.5 h-4.5 border-none font-black uppercase tracking-tight ${
+                                      i.condicao_geral === 'Crítico' ? 'bg-rose-500 text-white' :
+                                      i.condicao_geral === 'Razoável' ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'
+                                    }`}
+                                  >
+                                    {i.condicao_geral}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right pr-8">
+                                  <div className="flex items-center justify-end gap-3 text-muted-foreground/80 group-hover:text-foreground transition-colors">
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-xs font-bold leading-none">{i.inspector_nome || 'Nexo Bot'}</span>
+                                      <span className="text-[9px] font-medium opacity-50 uppercase tracking-widest">Técnico Certificado</span>
+                                    </div>
+                                    <div className="w-8 h-8 rounded-full bg-muted/30 border border-border/50 flex items-center justify-center">
+                                      <User size={12} className="opacity-40" />
+                                    </div>
+                                  </div>
+                                </TableCell>
+                             </TableRow>
+                           );
+                         })
+                     )}
+                   </TableBody>
+                 </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
           </motion.div>
         ) : (
           <motion.div

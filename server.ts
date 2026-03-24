@@ -281,6 +281,15 @@ async function startServer() {
     io.emit("notification", { userId, titulo, mensagem });
   };
 
+  const notifyManagers = async (titulo: string, mensagem: string) => {
+    const { data: managers } = await (supabaseAdmin || supabase).from('profiles').select('id').in('perfil', ['Administrador', 'Gestor']);
+    if (managers) {
+      for (const m of managers) {
+        await createNotification(m.id, titulo, mensagem);
+      }
+    }
+  };
+
 
   // =======================================================
   // PORTAL DO CLIENTE — API dedicada
@@ -449,10 +458,13 @@ async function startServer() {
       
       if (error) {
         logToFile("ERROR", "Falha ao criar incidente do cliente", { error: error.message, cliente_id: clienteId, categoria });
-        return res.status(500).json({ error: `Erro na base de dados: ${error.message}` });
+        return res.status(500).json({ error: "Erro ao criar pedido" });
       }
 
-      logToFile("INFO", "Incidente/Ordem de cliente criado com sucesso", { id: inserted?.id, cliente_id: clienteId, categoria });
+      // Notificar Gestores/Administradores sobre o novo pedido do cliente
+      notifyManagers("Nova Ordem de Cliente", `O cliente ${(req as any).cliente?.nome || 'N/A'} submeteu uma nova solicitação: ${categoria}.`);
+      
+      logToFile("INFO", "Incidente de cliente criado", { id: inserted?.id, cliente_id: clienteId });
       io.emit("incident-update", { action: 'create', incidentId: inserted?.id });
       res.json(inserted);
     } catch (err: any) {
@@ -603,6 +615,59 @@ async function startServer() {
     } catch (error: any) {
       logToFile("ERROR", "Erro geral ao atualizar utilizador", { error: error.message, target_user_id: targetUserId, user_id: userId });
       res.status(500).json({ error: "Erro ao atualizar utilizador" });
+    }
+  });
+
+  app.get("/api/users/:id/activity", authenticate, async (req, res) => {
+    const userId = req.params.id;
+    const db = supabaseAdmin || supabase;
+
+    try {
+      // 1. Incidents (Assigned & Created)
+      const { data: incidents } = await db.from('incidents')
+        .select('*, properties(endereco)')
+        .or(`responsavel_id.eq.${userId},criado_por.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      // 2. Recent Actions (Audit log)
+      const { data: actions } = await db.from('incident_actions')
+        .select('*, incidents(descricao)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      // 3. Asset Inspections
+      const { data: inspections } = await db.from('asset_inspections')
+        .select('*, assets(nome)')
+        .eq('inspector_id', userId)
+        .order('data_inspecao', { ascending: false })
+        .limit(10);
+
+      // 4. Maintenance Plans
+      const { data: plans } = await db.from('maintenance_plans')
+        .select('*, assets(nome)')
+        .eq('responsavel_id', userId)
+        .limit(10);
+
+      // 5. Aggregate Stats
+      const totalAssigned = (incidents || []).filter(i => i.responsavel_id === userId).length;
+      const totalResolved = (incidents || []).filter(i => i.responsavel_id === userId && i.estado === 'Resolvido').length;
+
+      res.json({
+        incidents: (incidents || []).map(i => ({ ...i, property_name: i.properties?.endereco })),
+        actions: (actions || []).map(a => ({ ...a, incident_desc: a.incidents?.descricao })),
+        inspections: (inspections || []).map(ins => ({ ...ins, asset_name: ins.assets?.nome })),
+        plans: (plans || []).map(p => ({ ...p, asset_name: p.assets?.nome })),
+        stats: {
+          totalAssigned,
+          totalResolved,
+          compliance: totalAssigned > 0 ? Math.round((totalResolved / totalAssigned) * 100) : 100
+        }
+      });
+    } catch (error: any) {
+      logToFile("ERROR", "Erro ao buscar atividade do utilizador", { error: error.message, userId });
+      res.status(500).json({ error: "Erro ao buscar atividade" });
     }
   });
 
@@ -817,6 +882,163 @@ async function startServer() {
     }
   });
 
+  app.get("/api/analytics/resource-allocation", authenticate, async (req, res) => {
+    try {
+      const db = supabaseAdmin || supabase;
+      
+      // 1. Labor Costs
+      const { data: labor } = await db.from('incident_labor').select('start_time, end_time');
+      const totalLaborHours = (labor || []).reduce((acc, l) => {
+        if (!l.start_time || !l.end_time) return acc;
+        const dur = (new Date(l.end_time).getTime() - new Date(l.start_time).getTime()) / 3600000;
+        return acc + Math.max(0, dur);
+      }, 0);
+      const laborCost = totalLaborHours * 500; // Average rate of 500 MT/h
+
+      // 2. Parts & Consumables Costs
+      const { data: parts } = await db.from('incident_parts').select('quantity_used, inventory(categoria, unit_cost, preco_compra)');
+      let partsCost = 0;
+      let consumablesCost = 0;
+
+      (parts || []).forEach((p: any) => {
+        const qty = p.quantity_used || 0;
+        const price = parseFloat(p.inventory?.unit_cost || p.inventory?.preco_compra || 0);
+        const cat = p.inventory?.categoria || '';
+
+        if (cat === 'Consumíveis' || cat === 'Lubrificantes' || cat === 'Equipamento de Proteção (EPI)') {
+          consumablesCost += qty * price;
+        } else {
+          partsCost += qty * price;
+        }
+      });
+
+      // 3. Maintenance Plans Costs (Preventive)
+      const { data: plans } = await db.from('maintenance_plans').select('custo_real, custo_estimado, estado');
+      const totalPlansCost = (plans || []).reduce((acc, p) => acc + (p.estado === 'Concluído' ? (p.custo_real || p.custo_estimado || 0) : (p.custo_estimado || 0)), 0);
+
+      // 4. Incident Estimated Costs (Corrective)
+      const { data: incidents } = await db.from('incidents').select('custo_estimado');
+      const totalIncidentsCost = (incidents || []).reduce((acc, i) => acc + (i.custo_estimado || 0), 0);
+
+      const totalSpent = totalPlansCost + totalIncidentsCost;
+      
+      // Logistics/Others is the remainder of reported costs that isn't labor/parts/consumables
+      // But to be safe and avoid negative values, let's use a floor or a percentage of total
+      const trackedCosts = laborCost + partsCost + consumablesCost;
+      const logisticsCost = Math.max(totalSpent * 0.15, totalSpent - trackedCosts);
+
+      const finalTotal = laborCost + partsCost + consumablesCost + logisticsCost;
+
+      res.json({
+        labor: laborCost,
+        parts: partsCost,
+        logistics: logisticsCost,
+        consumables: consumablesCost,
+        total: finalTotal,
+        percentages: {
+          labor: finalTotal > 0 ? Math.round((laborCost / finalTotal) * 100) : 40,
+          parts: finalTotal > 0 ? Math.round((partsCost / finalTotal) * 100) : 35,
+          logistics: finalTotal > 0 ? Math.round((logisticsCost / finalTotal) * 100) : 15,
+          consumables: finalTotal > 0 ? Math.round((consumablesCost / finalTotal) * 100) : 10
+        }
+      });
+    } catch (error: any) {
+      logToFile("ERROR", "Erro no analytics de alocação", { error: error.message });
+      res.status(500).json({ error: "Erro ao processar analytics" });
+    }
+  });
+
+  app.get("/api/reports/sla-performance", authenticate, async (req, res) => {
+    try {
+      const { data, error } = await (supabaseAdmin || supabase)
+        .from('incidents')
+        .select('id, categoria, descricao, severidade, estado, created_at, data_resolucao, sla_resolucao_limite')
+        .not('data_resolucao', 'is', null);
+
+      if (error) throw error;
+
+      const report = (data || []).map(inc => {
+        const isCompliant = inc.data_resolucao && inc.sla_resolucao_limite 
+          ? new Date(inc.data_resolucao) <= new Date(inc.sla_resolucao_limite)
+          : false;
+        
+        return {
+          ID: inc.id.slice(0, 8).toUpperCase(),
+          Categoria: inc.categoria,
+          Descricao: inc.descricao,
+          Severidade: inc.severidade,
+          Abertura: inc.created_at,
+          Resolucao: inc.data_resolucao,
+          Limite_SLA: inc.sla_resolucao_limite,
+          Status_SLA: isCompliant ? 'CONFORME' : 'VIOLADO'
+        };
+      });
+
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/reports/material-consumption", authenticate, async (req, res) => {
+    try {
+      const { data, error } = await (supabaseAdmin || supabase)
+        .from('incident_parts')
+        .select(`
+          quantity_used,
+          created_at,
+          inventory (name, unit_cost, sku, categoria),
+          incidents (descricao, categoria)
+        `);
+
+      if (error) throw error;
+
+      const report = (data || []).map((entry: any) => ({
+        Data: entry.created_at,
+        Material: entry.inventory?.name || 'N/A',
+        SKU: entry.inventory?.sku || 'N/A',
+        Categoria: entry.inventory?.categoria || 'N/A',
+        Quantidade: entry.quantity_used,
+        Custo_Unit: entry.inventory?.unit_cost || 0,
+        Total: (entry.quantity_used || 0) * (entry.inventory?.unit_cost || 0),
+        Incidente: entry.incidents?.descricao || 'N/A'
+      }));
+
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/reports/critical-stock", authenticate, async (req, res) => {
+    try {
+      const { data, error } = await (supabaseAdmin || supabase)
+        .from('inventory')
+        .select('*');
+
+      if (error) throw error;
+
+      const critical = (data || [])
+        .filter((item: any) => {
+          const qty = item.quantity_on_hand ?? item.quantidade ?? 0;
+          const min = item.min_quantity ?? item.stock_minimo ?? 0;
+          return qty <= min && min > 0;
+        })
+        .map((item: any) => ({
+          SKU: item.sku,
+          Material: item.name ?? item.nome,
+          Categoria: item.category ?? item.categoria,
+          Stock_Atual: item.quantity_on_hand ?? item.quantidade,
+          Stock_Minimo: item.min_quantity ?? item.stock_minimo,
+          Estado: 'REPOSIÇÃO URGENTE'
+        }));
+
+      res.json(critical);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/properties", authenticate, async (req, res) => {
     const { data } = await (supabaseAdmin || supabase).from('properties').select('*');
     res.json(data || []);
@@ -951,7 +1173,7 @@ async function startServer() {
 
   app.patch("/api/assets/:id", authenticate, async (req, res) => {
     const { id } = req.params;
-    const { nome, categoria, property_id, localizacao_detalhada, data_instalacao, probabilidade_falha, sinais_alerta, parent_id, obsoleto, data_obsolescencia } = req.body;
+    const { nome, categoria, property_id, localizacao_detalhada, data_instalacao, probabilidade_falha, sinais_alerta, parent_id, obsoleto, data_obsolescencia, qr_code } = req.body;
     const userId = (req as any).user?.id;
     
     try {
@@ -971,6 +1193,7 @@ async function startServer() {
       if (parent_id !== undefined) updatePayload.parent_id = parent_id || null;
       if (obsoleto !== undefined) updatePayload.obsoleto = obsoleto;
       if (data_obsolescencia !== undefined) updatePayload.data_obsolescencia = data_obsolescencia || null;
+      if (qr_code !== undefined) updatePayload.qr_code = qr_code;
 
       const db = supabaseAdmin || supabase;
       let { data, error } = await db.from('assets').update(updatePayload).eq('id', id).select('*').single();
@@ -1005,6 +1228,12 @@ async function startServer() {
       }
 
       logToFile("INFO", "Ativo atualizado com sucesso", { id, user_id: userId });
+
+      // Notificar Gestores se a probabilidade de falha for atualizada para 'Alta'
+      if (probabilidade_falha === 'Alta') {
+        notifyManagers("Alerta de Ativo Crítico", `O ativo ${nome || 'Identificado por ID: ' + id} foi marcado com Probabilidade de Falha ALTA.`);
+      }
+
       res.json(data);
     } catch (error: any) {
       logToFile("ERROR", "Erro geral ao atualizar ativo", { error: error.message, id, user_id: userId });
@@ -1150,6 +1379,10 @@ async function startServer() {
         return res.status(500).json({ error: error.message });
       }
 
+      if (responsavel_id && responsavel_id !== 'none') {
+        createNotification(responsavel_id, "Incidente Atribuído", `Foi-lhe atribuído o incidente #${id.substring(0,8)}.`);
+      }
+
       io.emit("incident-update", { action: 'patch', incidentId: id });
       res.json(data);
     } catch (error: any) {
@@ -1220,14 +1453,37 @@ async function startServer() {
     try {
       let updateData: any = {};
       if (novo_estado) updateData.estado = novo_estado;
-      if (responsavel_id) updateData.responsavel_id = responsavel_id;
+      if (responsavel_id) {
+        updateData.responsavel_id = responsavel_id;
+        
+        // Regra Automática: Se atribuir técnico, passa a "Em progresso"
+        if (responsavel_id !== 'none') {
+          updateData.estado = 'Em progresso';
+          novo_estado = 'Em progresso';
+          
+          // Iniciar timer automaticamente se não houver um ativo
+          const { data: openLabor } = await (supabaseAdmin || supabase)
+            .from('incident_labor')
+            .select('id')
+            .eq('incident_id', incidentId)
+            .is('end_time', null);
+            
+          if (!openLabor || openLabor.length === 0) {
+            await (supabaseAdmin || supabase).from('incident_labor').insert([{ 
+              incident_id: incidentId, 
+              user_id: responsavel_id, 
+              start_time: new Date().toISOString() 
+            }]);
+          }
+        }
+      }
 
       // Auto-generate audit message when assigning a technician
       let autoLogSuffix = '';
-      if (responsavel_id) {
+      if (responsavel_id && responsavel_id !== 'none') {
         const { data: techProfile } = await (supabaseAdmin || supabase).from('profiles').select('nome').eq('id', responsavel_id).single();
         const { data: assignerProfile } = await (supabaseAdmin || supabase).from('profiles').select('nome').eq('id', userId).single();
-        autoLogSuffix = ` — Atribuído a: ${techProfile?.nome || 'Técnico'} (por ${assignerProfile?.nome || 'Gestor'})`;
+        autoLogSuffix = ` — Atribuído a: ${techProfile?.nome || 'Técnico'} (por ${assignerProfile?.nome || 'Gestor'}). Timer iniciado automaticamente.`;
       }
 
       const finalDesc = ((descricao_acao || '').trim() + autoLogSuffix) || '[Ação registada]';
@@ -1236,6 +1492,15 @@ async function startServer() {
       if (actionError) {
         logToFile("ERROR", "Erro ao registar ação de incidente", { error: actionError.message, incident_id: incidentId, user_id: userId });
         return res.status(500).json({ error: "Erro ao registar ação" });
+      }
+
+      // Notificar sobre a ação
+      const { data: incident } = await (supabaseAdmin || supabase).from('incidents').select('criado_por, responsavel_id').eq('id', incidentId).single();
+      if (incident) {
+        const recipients = new Set([incident.criado_por, incident.responsavel_id].filter(id => id && id !== userId));
+        for (const recipientId of recipients) {
+          createNotification(recipientId, "Atualização de Incidente", `Nova ação registada no incidente #${incidentId.substring(0,8)}: ${novo_estado || 'Comentário'}`);
+        }
       }
 
       logToFile("INFO", "Ação de incidente registada com sucesso", { incident_id: incidentId, novo_estado, responsavel_id, user_id: userId });
@@ -1356,7 +1621,7 @@ async function startServer() {
 
   app.post("/api/maintenance-plans", authenticate, async (req, res) => {
     const userId = (req as any).user?.id;
-    const { asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado, descricao } = req.body;
+    const { asset_id, tipo, periodicidade, proxima_data, data_fim, responsavel_id, custo_estimado, descricao, prioridade } = req.body;
 
     try {
       if (!asset_id || !responsavel_id) {
@@ -1385,7 +1650,8 @@ async function startServer() {
       }
 
       const { data, error } = await (supabaseAdmin || supabase).from('maintenance_plans').insert([{
-        asset_id, tipo, periodicidade, proxima_data, responsavel_id, custo_estimado: parseFloat(custo_estimado) || 0, descricao,
+        asset_id, tipo, periodicidade, proxima_data, data_fim: data_fim || null, responsavel_id, custo_estimado: parseFloat(custo_estimado) || 0, descricao,
+        prioridade: prioridade || 'Normal',
         estado: 'Pendente'
       }]).select('id').single();
 
@@ -1466,6 +1732,41 @@ async function startServer() {
     } catch (error: any) {
       logToFile("ERROR", "Erro geral ao concluir plano de manutenção", { error: error.message, id, user_id: userId });
       res.status(500).json({ error: "Erro ao concluir plano" });
+    }
+  });
+
+  app.patch("/api/maintenance-plans/:id", authenticate, async (req, res) => {
+    const userId = (req as any).user?.id;
+    const { id } = req.params;
+    const { responsavel_id, proxima_data, data_fim, custo_estimado, descricao, prioridade, periodicidade } = req.body;
+
+    try {
+      const updateData: any = {};
+      if (responsavel_id) updateData.responsavel_id = responsavel_id;
+      if (proxima_data) updateData.proxima_data = proxima_data;
+      if (data_fim !== undefined) updateData.data_fim = data_fim;
+      if (custo_estimado !== undefined) updateData.custo_estimado = parseFloat(custo_estimado) || 0;
+      if (descricao !== undefined) updateData.descricao = descricao;
+      if (prioridade) updateData.prioridade = prioridade;
+      if (periodicidade) updateData.periodicidade = periodicidade;
+
+      const { data, error } = await (supabaseAdmin || supabase)
+        .from('maintenance_plans')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        logToFile("ERROR", "Erro ao atualizar plano de manutenção", { error: error.message, id, userId });
+        return res.status(500).json({ error: error.message });
+      }
+
+      logToFile("INFO", "Plano de manutenção atualizado", { id, userId });
+      res.json(data);
+    } catch (error: any) {
+      logToFile("ERROR", "Erro geral ao atualizar plano", { error: error.message, id, userId });
+      res.status(500).json({ error: "Erro ao atualizar plano" });
     }
   });
 
@@ -1809,9 +2110,12 @@ async function startServer() {
     const { id } = req.params;
     const { part_id, quantity_used } = req.body;
     const userId = (req as any).user.id;
+    const userRole = (req as any).user.perfil;
     const qty = parseInt(quantity_used) || 1;
 
-    logToFile("INFO", "Tentativa de registar material", { id, userId, part_id, qty });
+    const isApproved = ['Gestor', 'Administrador'].includes(userRole);
+
+    logToFile("INFO", "Tentativa de registar material", { id, userId, part_id, qty, isApproved });
 
     // Decrease inventory stock
     const { data: part, error: partError } = await (supabaseAdmin || supabase).from('inventory').select('quantity_on_hand, name').eq('id', part_id).single();
@@ -1820,15 +2124,24 @@ async function startServer() {
       return res.status(404).json({ error: "Peça não encontrada no inventário" });
     }
 
-    if (part.quantity_on_hand < qty) {
+    if (isApproved && part.quantity_on_hand < qty) {
       logToFile("ERROR", "Stock insuficiente", { part_id, onHand: part.quantity_on_hand, requested: qty });
-      return res.status(400).json({ error: "Stock insuficiente" });
+      return res.status(400).json({ error: "Stock insuficiente para aprovação imediata" });
     }
 
-    const payload = { incident_id: id, part_id, quantity_used: qty, ...userAuditPayload(userId) };
+    // Se a API db lançar erro de schema de colunas, "approved" desaparecerá via wrapper? 
+    // Como estamos a usar a base original para incident_parts, o safeSupabaseInsert não é usado aqui nativamente no server.ts (é insert dinâmico), mas update manual do schema resolveu.
+    const payload = { incident_id: id, part_id, quantity_used: qty, approved: isApproved, ...userAuditPayload(userId) };
     logToFile("DEBUG", "Payload Material", payload);
 
-    await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: part.quantity_on_hand - qty }).eq('id', part_id);
+    if (isApproved) {
+      const newQty = part.quantity_on_hand - qty;
+      await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: newQty }).eq('id', part_id);
+
+      if (newQty <= 5) {
+        notifyManagers("Alerta de Stock Crítico", `O material ${part.name} está com stock baixo (${newQty} unidades restantes).`);
+      }
+    }
 
     const { data, error } = await (supabaseAdmin || supabase).from('incident_parts').insert([payload]).select('*, inventory(name, unit_cost, sku)').single();
     if (error) {
@@ -1837,9 +2150,10 @@ async function startServer() {
     }
 
     // Audit log
+    const statusText = isApproved ? "Material registado (Aprovado)" : "Material requisitado (Pendente de Aprovação)";
     await (supabaseAdmin || supabase).from('incident_actions').insert([{
       incident_id: id, user_id: safeUserId(userId),
-      descricao_acao: `[+ Material registado] ${part.name} x${qty}`
+      descricao_acao: `[+ ${statusText}] ${part.name} x${qty}`
     }]);
 
     res.json(data);
@@ -1851,7 +2165,7 @@ async function startServer() {
     const userPerfil = (req as any).user.perfil;
 
     // Fetch the part entry
-    const { data: entry, error: fetchErr } = await (supabaseAdmin || supabase).from('incident_parts').select('user_id, part_id, quantity_used, inventory(name)').eq('id', partId).single();
+    const { data: entry, error: fetchErr } = await (supabaseAdmin || supabase).from('incident_parts').select('user_id, part_id, quantity_used, approved, inventory(name)').eq('id', partId).single();
     if (fetchErr || !entry) return res.status(404).json({ error: 'Material não encontrado' });
 
     // Only creator, Gestor or Admin can delete
@@ -1859,22 +2173,70 @@ async function startServer() {
       return res.status(403).json({ error: 'Sem permissão para eliminar este material' });
     }
 
-    // Restore inventory stock
-    const { data: invItem } = await (supabaseAdmin || supabase).from('inventory').select('quantity_on_hand').eq('id', entry.part_id).single();
-    if (invItem) {
-      await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: invItem.quantity_on_hand + entry.quantity_used }).eq('id', entry.part_id);
+    // Restore inventory stock only if it was approved
+    if (entry.approved !== false) {
+      const { data: invItem } = await (supabaseAdmin || supabase).from('inventory').select('quantity_on_hand').eq('id', entry.part_id).single();
+      if (invItem) {
+        await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: invItem.quantity_on_hand + entry.quantity_used }).eq('id', entry.part_id);
+      }
     }
 
     await (supabaseAdmin || supabase).from('incident_parts').delete().eq('id', partId);
 
     // Audit log
     const partName = (entry as any).inventory?.name || 'Material';
+    const revertText = entry.approved !== false ? "(stock restaurado)" : "(pedido cancelado)";
     await (supabaseAdmin || supabase).from('incident_actions').insert([{
       incident_id: id, user_id: userId,
-      descricao_acao: `[- Material revertido] ${partName} x${entry.quantity_used} (stock restaurado)`
+      descricao_acao: `[- Material removido] ${partName} x${entry.quantity_used} ${revertText}`
     }]);
 
     res.json({ success: true });
+  });
+
+  app.patch("/api/incidents/:id/parts/:partId/approve", authenticate, async (req, res) => {
+    const { id, partId } = req.params;
+    const userId = (req as any).user.id;
+    const userRole = (req as any).user.perfil;
+
+    if (!['Gestor', 'Administrador'].includes(userRole)) {
+      return res.status(403).json({ error: "Sem permissão para aprovar materiais" });
+    }
+
+    // Fetch the part
+    const { data: entry, error: fetchErr } = await (supabaseAdmin || supabase).from('incident_parts').select('*').eq('id', partId).single();
+    if (fetchErr || !entry) return res.status(404).json({ error: 'Pedido de material não encontrado' });
+    if (entry.approved) return res.status(400).json({ error: 'Material já foi aprovado' });
+
+    // Check inventory stock again before approving
+    const { data: invItem } = await (supabaseAdmin || supabase).from('inventory').select('quantity_on_hand, name').eq('id', entry.part_id).single();
+    if (!invItem || invItem.quantity_on_hand < entry.quantity_used) {
+       return res.status(400).json({ error: 'Stock insuficiente para aprovar este material no momento' });
+    }
+
+    // Deduct stock
+    const newQty = invItem.quantity_on_hand - entry.quantity_used;
+    await (supabaseAdmin || supabase).from('inventory').update({ quantity_on_hand: newQty }).eq('id', entry.part_id);
+    
+    // Update approved flag
+    const { data } = await (supabaseAdmin || supabase)
+      .from('incident_parts')
+      .update({ approved: true })
+      .eq('id', partId)
+      .select('*, inventory(name, unit_cost, sku)')
+      .single();
+
+    if (newQty <= 5) {
+       notifyManagers("Alerta de Stock Crítico", `O material ${invItem.name} está com stock baixo (${newQty} unidades restantes).`);
+    }
+
+    await (supabaseAdmin || supabase).from('incident_actions').insert([{
+      incident_id: id, user_id: safeUserId(userId),
+      descricao_acao: `[✓ Material Aprovado] ${invItem.name} x${entry.quantity_used}`
+    }]);
+
+    io.emit("incident-update", { action: 'update', incidentId: id });
+    res.json(data);
   });
 
   // ─── Asset Meter Readings ───────────────────────────────────────────────
@@ -2126,7 +2488,7 @@ async function startServer() {
         frequency_days: frequency_days ? parseInt(frequency_days) : null,
         threshold_value: threshold_value ? parseInt(threshold_value) : null,
         categoria: categoria || 'Preventiva',
-        created_by: safeUserId(userId),
+        created_by: userId,
         created_at: new Date().toISOString(),
         is_active: true
       };
@@ -2146,6 +2508,24 @@ async function startServer() {
     }
   });
 
+  // DELETE: Remove a maintenance schedule
+  app.delete("/api/maintenance/schedules/:id", authenticate, async (req, res) => {
+    const userId = (req as any).user?.id;
+    const { id } = req.params;
+    try {
+      const { error } = await (supabaseAdmin || supabase).from('pm_schedules').delete().eq('id', id);
+      if (error) {
+        logToFile("ERROR", "Erro ao eliminar agendamento", { error: error.message, id, user_id: userId });
+        return res.status(500).json({ error: error.message });
+      }
+      logToFile("INFO", "Agendamento eliminado com sucesso", { id, user_id: userId });
+      res.json({ success: true });
+    } catch (error: any) {
+      logToFile("ERROR", "Erro geral ao eliminar agendamento", { error: error.message, id, user_id: userId });
+      res.status(500).json({ error: "Erro ao eliminar agendamento" });
+    }
+  });
+
   // GET: List active maintenance executions (for tab "Planos Ativos")
   app.get("/api/maintenance/executions", authenticate, async (req, res) => {
     const userId = (req as any).user?.id;
@@ -2154,7 +2534,7 @@ async function startServer() {
       
       const { data, error } = await supabase
         .from('maintenance_plans')
-        .select('*, assets(nome), profiles!responsavel_id(nome)')
+        .select('*, assets(nome, property_id, properties(endereco)), profiles!responsavel_id(nome)')
         .neq('estado', 'Concluído');
       
       if (error) {
@@ -2208,6 +2588,9 @@ async function startServer() {
         return res.status(500).json({ error: "Erro ao atualizar plano" });
       }
 
+      // Notificar Gestores sobre o início da manutenção
+      notifyManagers("Manutenção Iniciada", `O técnico ${(req as any).user?.nome || 'N/A'} iniciou o plano de manutenção #${id.substring(0,8)}.`);
+
       logToFile("INFO", "Plano de manutenção iniciado", { plan_id: id, user_id: userId });
       res.json({ success: true, message: "Plano iniciado com sucesso" });
     } catch (error: any) {
@@ -2257,6 +2640,9 @@ async function startServer() {
         logToFile("ERROR", "Erro ao completar plano", { plan_id: id, error: result.error.message });
         return res.status(500).json({ error: "Erro ao completar plano" });
       }
+
+      // Notificar Gestores sobre a conclusão da manutenção
+      notifyManagers("Manutenção Concluída", `O plano de manutenção #${id.substring(0,8)} foi concluído com sucesso por ${(req as any).user?.nome || 'N/A'}.`);
 
       logToFile("INFO", "Plano de manutenção concluído", { plan_id: id, observations, actual_cost, user_id: userId });
       res.json({ success: true, message: "Plano concluído com sucesso" });
@@ -2412,7 +2798,7 @@ async function startServer() {
     logToFile("INFO", "Servidor Nexo SGFM iniciado e à escuta na porta 3000");
 
     // Start the maintenance scheduler
-    maintenanceScheduler = new MaintenanceScheduler(supabase, logToFile);
+    maintenanceScheduler = new MaintenanceScheduler(supabase, logToFile, io);
     maintenanceScheduler.start();
     logToFile("INFO", "Iniciando Maintenance Scheduler - verificará agendamentos a cada 1 hora");
   });

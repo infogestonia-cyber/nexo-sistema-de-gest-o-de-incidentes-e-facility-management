@@ -82,12 +82,14 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
 
   const [formData, setFormData] = useState({
     property_id: '',
-    asset_id: 'none',
+    asset_id: '',
     categoria: CATEGORIES[0],
     descricao: '',
     severidade: 'Médio',
     responsavel_id: 'none'
   });
+
+  const propertyAssets = assets.filter(a => String(a.property_id) === String(formData.property_id));
 
   useEffect(() => { fetchData(); }, []);
 
@@ -239,10 +241,9 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos Status</SelectItem>
-              <SelectItem value="Novo">Novo</SelectItem>
-              <SelectItem value="Em Progresso">Em Progresso</SelectItem>
-              <SelectItem value="Pendente">Pendente</SelectItem>
-              <SelectItem value="Concluido">Concluido</SelectItem>
+              <SelectItem value="Aberto">Aberto</SelectItem>
+              <SelectItem value="Em progresso">Em progresso</SelectItem>
+              <SelectItem value="Resolvido">Resolvido</SelectItem>
             </SelectContent>
           </Select>
 
@@ -286,9 +287,9 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Registos', value: incidents.length, icon: Activity, color: 'text-blue-500', bgColor: 'bg-blue-500/10' },
-          { label: 'Em Aberto', value: incidents.filter(i => i.estado === 'Aberto' || i.estado === 'Novo').length, icon: AlertCircle, color: 'text-rose-500', bgColor: 'bg-rose-500/10' },
-          { label: 'Em Resolução', value: incidents.filter(i => i.estado === 'Em Progresso' || i.estado === 'Atribuído').length, icon: Clock, color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
-          { label: 'Concluídos', value: incidents.filter(i => i.estado === 'Concluido' || i.estado === 'Resolvido').length, icon: CheckCircle2, color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
+          { label: 'Em Aberto', value: incidents.filter(i => i.estado === 'Aberto' || i.estado === 'Novo' || i.estado === 'Atribuído').length, icon: AlertCircle, color: 'text-rose-500', bgColor: 'bg-rose-500/10' },
+          { label: 'Em Resolução', value: incidents.filter(i => i.estado === 'Em progresso' || i.estado === 'Em Progresso').length, icon: Clock, color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
+          { label: 'Resolvidos', value: incidents.filter(i => i.estado === 'Resolvido' || i.estado === 'Concluido' || i.estado === 'Fechado').length, icon: CheckCircle2, color: 'text-emerald-500', bgColor: 'bg-emerald-500/10' },
         ].map((s, i) => (
           <Card key={i} className="shadow-sm border-border bg-card/50 backdrop-blur-sm card-shine group hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-4 flex items-center justify-between">
@@ -347,9 +348,9 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                     <Badge 
                       variant="outline" 
                       className={`text-[9px] h-4 uppercase font-bold border-none ${
-                         incident.estado === 'Aberto' || incident.estado === 'Novo' ? 'bg-rose-500/15 text-rose-500' :
-                         incident.estado === 'Em Progresso' || incident.estado === 'Atribuído' ? 'bg-blue-500/15 text-blue-500' :
-                         incident.estado === 'Concluido' || incident.estado === 'Resolvido' ? 'bg-emerald-500/15 text-emerald-500' :
+                         incident.estado === 'Aberto' || incident.estado === 'Novo' || incident.estado === 'Atribuído' ? 'bg-rose-500/15 text-rose-500' :
+                         incident.estado === 'Em progresso' || incident.estado === 'Em Progresso' ? 'bg-amber-500/15 text-amber-500' :
+                         incident.estado === 'Resolvido' || incident.estado === 'Concluido' || incident.estado === 'Fechado' ? 'bg-emerald-500/15 text-emerald-500' :
                          'bg-zinc-500/15 text-zinc-500'
                       }`}
                     >
@@ -454,7 +455,14 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                 <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 ml-1">Localização</Label>
                 <Select 
                   value={formData.property_id} 
-                  onValueChange={(val) => setFormData({ ...formData, property_id: val })}
+                  onValueChange={(val) => {
+                    const filtered = assets.filter(a => String(a.property_id) === String(val));
+                    setFormData({ 
+                      ...formData, 
+                      property_id: val, 
+                      asset_id: filtered.length > 0 ? filtered[0].id.toString() : '' 
+                    });
+                  }}
                   required
                 >
                   <SelectTrigger className="h-10 bg-muted/10 border-border/50 transition-all focus:ring-1 focus:ring-primary/20">
@@ -470,17 +478,22 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
                 <Select 
                   value={formData.asset_id} 
                   onValueChange={(val) => setFormData({ ...formData, asset_id: val })}
+                  disabled={!formData.property_id || !propertyAssets.length}
                 >
                   <SelectTrigger className="h-10 bg-muted/10 border-border/50 transition-all focus:ring-1 focus:ring-primary/20">
-                    <SelectValue placeholder="Vincular equipamento..." />
+                    <SelectValue placeholder={!formData.property_id ? "Selecione localização primeiro" : "Vincular equipamento..."} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Geral (Sem Ativo)</SelectItem>
-                    {assets.filter(a => String(a.property_id) === String(formData.property_id)).map(a => (
+                    {propertyAssets.map(a => (
                       <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {formData.property_id && !propertyAssets.length && (
+                  <p className="text-[10px] text-rose-500 font-bold animate-pulse mt-1 ml-1">
+                    ⚠️ Esta unidade não possui ativos cadastrados.
+                  </p>
+                )}
               </div>
               <div className="space-y-2.5">
                 <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50 ml-1">Categoria</Label>
@@ -528,7 +541,7 @@ export default function Incidents({ onSelectIncident }: { onSelectIncident: (id:
 
             <DialogFooter className="gap-3 pt-4 border-t border-border/30">
               <Button type="button" variant="ghost" className="flex-1 text-xs font-semibold h-10" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="flex-1 font-bold h-10 shadow-lg shadow-primary/20">
+              <Button type="submit" disabled={submitting || !formData.property_id || !propertyAssets.length} className="flex-1 font-bold h-10 shadow-lg shadow-primary/20">
                 {submitting ? 'A registar...' : 'Enviar Reporte'}
               </Button>
             </DialogFooter>

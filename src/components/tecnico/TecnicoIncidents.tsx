@@ -44,49 +44,48 @@ export default function TecnicoIncidents({ onSelectIncident }: any) {
         return matchesSearch && matchesFilter;
     });
 
-    if (selectedId) {
-        return <div className="-m-4"><IncidentDetail id={selectedId} onBack={() => { setSelectedId(null); fetchIncidents(); }} /></div>;
-    }
-
     return (
-        <div className="space-y-6 pb-32">
-            <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.2em] mb-1">Centro de Operações</p>
-                    <h2 className="text-2xl font-black text-white tracking-tight">Incidentes</h2>
+        <>
+        <div style={{ display: selectedId ? 'none' : 'block' }} className="space-y-6 pb-32">
+            <div className="flex items-center justify-between px-1">
+                <div className="flex flex-col gap-0.5">
+                    <h2 className="text-xl font-bold text-white tracking-tight">Intervenções</h2>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold italic flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Live Queue Operacional
+                    </p>
                 </div>
-                <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-emerald-500 uppercase tracking-widest shadow-lg shadow-emerald-500/5">
+                <div className="px-3 py-1 bg-primary/10 border border-primary/20 rounded-lg text-[10px] font-bold text-primary uppercase tracking-widest shadow-sm">
                     {filtered.length} Ativos
                 </div>
             </div>
 
-            {/* Search & Filter */}
+            {/* Search & Filter - System Interface */}
             <div className="space-y-4">
                 <div className="relative group">
-                    <div className="absolute inset-0 bg-emerald-500/5 rounded-2xl blur-md opacity-0 group-focus-within:opacity-100 transition-opacity" />
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 w-4 h-4 group-focus-within:text-emerald-500 transition-colors" />
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/40 w-4 h-4 group-focus-within:text-primary transition-colors" />
                     <input
                         type="text"
-                        placeholder="Pesquisar local ou categoria..."
+                        placeholder="Pesquisar local, categoria ou ID..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-xs text-white focus:outline-none focus:border-emerald-500/50 transition-all font-bold placeholder:text-gray-700 relative z-10"
+                        className="w-full bg-card/50 backdrop-blur-sm border border-border rounded-xl pl-11 pr-4 py-3 text-xs text-foreground focus:outline-none focus:border-primary/30 transition-all font-bold placeholder:text-muted-foreground/30 relative z-10 shadow-sm"
                     />
                 </div>
 
                 <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                     {[
                         { id: 'all', label: 'Todos' },
-                        { id: 'Atribuído', label: 'Atribuídos' },
+                        { id: 'Aberto', label: 'Pendentes' },
                         { id: 'Em progresso', label: 'Em Curso' },
                         { id: 'Resolvido', label: 'Concluídos' },
                     ].map(f => (
                         <button
                             key={f.id}
                             onClick={() => setFilter(f.id)}
-                            className={`flex-shrink-0 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${filter === f.id 
-                                ? 'bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/20' 
-                                : 'bg-white/5 text-gray-500 border-white/5 hover:bg-white/10 hover:text-gray-300'
+                            className={`flex-shrink-0 px-5 py-2 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all border ${filter === f.id 
+                                ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20' 
+                                : 'bg-card/50 text-muted-foreground border-border hover:bg-muted/30 hover:text-foreground'
                             }`}
                         >
                             {f.label}
@@ -95,83 +94,102 @@ export default function TecnicoIncidents({ onSelectIncident }: any) {
                 </div>
             </div>
 
-            {/* List */}
-            <div className="space-y-4">
+            {/* List - Balanced Interaction */}
+            <div className="space-y-3">
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-24 gap-4">
-                        <div className="w-10 h-10 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
-                        <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest animate-pulse">Sincronizando Dados</p>
+                    <div className="flex flex-col items-center justify-center py-32 gap-4">
+                        <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                        <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest italic animate-pulse">Sincronizando Sistema</p>
                     </div>
                 ) : filtered.map((i, idx) => (
                     <motion.div
                         key={i.id}
-                        initial={{ opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: idx * 0.05 }}
-                        whileTap={{ scale: 0.97 }}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.04 }}
                         onClick={() => setSelectedId(i.id)}
-                        className="group bg-white/[0.03] border border-white/5 rounded-3xl p-6 space-y-5 hover:bg-white/[0.05] transition-all card-shine relative overflow-hidden cursor-pointer"
+                        className="group bg-card/50 backdrop-blur-sm border border-border rounded-xl p-5 space-y-4 hover:bg-muted/30 transition-all card-shine relative overflow-hidden cursor-pointer shadow-sm"
                     >
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                             <AlertCircle size={48} className="text-white" />
-                        </div>
-
                         <div className="flex items-start justify-between gap-4 relative z-10">
                             <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <div className={`w-2 h-2 rounded-full shadow-[0_0_8px] ${i.estado === 'Resolvido' ? 'bg-emerald-500 shadow-emerald-500/50' :
-                                            i.estado === 'Em progresso' ? 'bg-amber-500 shadow-amber-500/50' :
-                                                'bg-blue-500 shadow-blue-500/50'
-                                        }`} />
-                                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{i.estado}</p>
-                                    <span className="text-gray-800 text-[10px]">/</span>
-                                    <span className="text-[10px] font-mono text-gray-600 font-bold">#{i.id?.toString().slice(-4).toUpperCase()}</span>
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Badge 
+                                        variant="outline" 
+                                        className={`text-[9px] h-4 uppercase font-bold px-2 border-none ${
+                                            i.estado === 'Resolvido' ? 'bg-emerald-500/15 text-emerald-500' :
+                                            i.estado === 'Em progresso' ? 'bg-amber-500/15 text-amber-500' :
+                                            'bg-blue-500/15 text-blue-500'
+                                        }`}
+                                    >
+                                        {i.estado}
+                                    </Badge>
+                                    <span className="text-[9px] font-mono text-muted-foreground/30 font-bold tracking-widest bg-muted/20 px-1.5 rounded">
+                                        #{i.id?.toString().slice(-4).toUpperCase()}
+                                    </span>
                                 </div>
-                                <h3 className="text-base font-black text-white tracking-tight mb-1.5 group-hover:text-emerald-400 transition-colors uppercase">{i.categoria}</h3>
-                                <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed font-bold">{i.descricao}</p>
+                                <h3 className="text-base font-bold text-foreground tracking-tight mb-1.5 group-hover:text-primary transition-colors uppercase leading-tight">
+                                    {i.categoria}
+                                </h3>
+                                <p className="text-xs text-muted-foreground/60 line-clamp-2 leading-relaxed font-medium">
+                                    {i.descricao}
+                                </p>
                             </div>
-                            <div className="shrink-0 pt-1">
-                                <Badge variant="outline" className={`text-[8px] font-black px-2 py-0.5 rounded border-none shadow-sm ${i.severidade === 'Crítico' ? 'bg-red-500/20 text-red-400' :
-                                        i.severidade === 'Alto' ? 'bg-orange-500/20 text-orange-400' :
-                                            'bg-blue-500/20 text-blue-400'
-                                    } uppercase tracking-tighter`}>
+                            <div className="shrink-0">
+                                <Badge 
+                                    variant="outline" 
+                                    className={`text-[9px] h-5 uppercase font-bold px-2.5 border-none shadow-sm ${
+                                        i.severidade === 'Crítico' ? 'bg-rose-500 text-black animate-pulse' :
+                                        i.severidade === 'Alto' ? 'bg-orange-500/15 text-orange-500' :
+                                        'bg-blue-500/15 text-blue-500'
+                                    } tracking-widest`}
+                                >
                                     {i.severidade}
                                 </Badge>
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between pt-4 border-t border-white/5 relative z-10">
+                        <div className="flex items-center justify-between pt-4 border-t border-border/50 relative z-10">
                             <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2 text-gray-600">
-                                    <div className="p-1.5 bg-white/5 rounded-lg">
-                                        <MapPin size={12} className="text-emerald-500/50" />
-                                    </div>
-                                    <span className="text-[9px] font-black uppercase tracking-widest truncate max-w-[120px]">{i.property_name}</span>
+                                <div className="flex items-center gap-2 text-muted-foreground/60">
+                                    <MapPin size={12} className="text-primary/70" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wide truncate max-w-[120px]">
+                                        {i.property_name}
+                                    </span>
                                 </div>
-                                <div className="flex items-center gap-2 text-gray-600">
-                                    <div className="p-1.5 bg-white/5 rounded-lg">
-                                        <Calendar size={12} className="text-blue-500/50" />
-                                    </div>
-                                    <span className="text-[9px] font-black uppercase tracking-widest">{i.created_at ? format(new Date(i.created_at), 'dd/MM') : '—'}</span>
+                                <div className="flex items-center gap-2 text-muted-foreground/60">
+                                    <Calendar size={12} className="text-muted-foreground/40" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wide">
+                                        {i.created_at ? format(new Date(i.created_at), 'dd MMM', { locale: ptBR }) : '—'}
+                                    </span>
                                 </div>
                             </div>
-                            <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-black transition-all">
-                                <ChevronRight size={16} />
+                            <div className="w-8 h-8 rounded-lg bg-muted/20 border border-border flex items-center justify-center text-muted-foreground/40 group-hover:bg-primary group-hover:text-primary-foreground group-hover:border-primary transition-all shadow-sm">
+                                <ChevronRight size={18} />
                             </div>
                         </div>
                     </motion.div>
                 ))}
 
                 {filtered.length === 0 && !loading && (
-                    <div className="text-center py-24 space-y-4">
-                        <div className="w-20 h-20 bg-white/5 border border-white/10 rounded-full flex items-center justify-center mx-auto mb-6 opacity-20">
-                            <AlertCircle size={40} className="text-gray-400" />
+                    <div className="text-center py-24 space-y-4 bg-card/20 border border-dashed border-border rounded-xl flex flex-col items-center">
+                        <div className="w-12 h-12 bg-muted/10 rounded-xl flex items-center justify-center opacity-30">
+                            <AlertCircle size={24} className="text-muted-foreground" />
                         </div>
-                        <p className="text-gray-600 text-xs font-black uppercase tracking-[0.2em]">Nenhum incidente encontrado</p>
+                        <div className="space-y-1">
+                            <p className="text-muted-foreground/60 text-[10px] font-bold uppercase tracking-widest">Fila Desimpedida</p>
+                            <p className="text-muted-foreground/30 text-[9px] font-medium uppercase tracking-widest italic">Nenhum incidente localizado</p>
+                        </div>
                     </div>
                 )}
             </div>
         </div>
+        
+        {selectedId && (
+            <div className="-m-4">
+                <IncidentDetail id={selectedId} onBack={() => { setSelectedId(null); fetchIncidents(); }} />
+            </div>
+        )}
+        </>
     );
 }
 

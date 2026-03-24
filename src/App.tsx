@@ -23,6 +23,9 @@ import AssetScanner from './components/AssetScanner';
 import Analytics from './components/Analytics';
 import SystemSettings from './components/SystemSettings';
 import ChangePassword from './components/ChangePassword';
+import { useNotifications } from './hooks/useNotifications';
+import { NotificationBell } from './components/ui/NotificationBell';
+import { CommandPalette } from './components/CommandPalette';
 
 import { api } from './services/api';
 import { requestNotificationPermission, showPushNotification } from './utils/notifications';
@@ -40,12 +43,13 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
+  const { notifications, isOpen: isNotifOpen, setIsOpen: setIsNotifOpen, markAsRead: markNotificationsRead } = useNotifications(user);
   const [propertyFilter, setPropertyFilter] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isValidating, setIsValidating] = useState(!!(sessionStorage.getItem('token') || localStorage.getItem('token')));
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [searchData, setSearchData] = useState({ properties: [], assets: [], incidents: [] });
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light';
@@ -67,7 +71,6 @@ export default function App() {
           const data = await api.get('/api/me');
           setUser(data.user);
           connectSocket(data.user);
-          fetchNotifications();
         } catch (e) {
           console.warn('Session invalid or user deleted:', e);
           handleLogout();
@@ -84,35 +87,38 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
-    socket.on('notification', (notif) => {
-      if (user && notif.userId === user.id) {
-        setNotifications(prev => [notif, ...prev]);
-        showPushNotification('Nexo SGFM', notif.mensagem);
+    if (user && token) {
+      const fetchSearchData = async () => {
+        const h = { 'Authorization': `Bearer ${token}` };
+        try {
+          const [pRes, aRes, iRes] = await Promise.all([
+            fetch('/api/properties', { headers: h }),
+            fetch('/api/assets', { headers: h }),
+            fetch('/api/incidents', { headers: h })
+          ]);
+          setSearchData({
+            properties: pRes.ok ? await pRes.json() : [],
+            assets: aRes.ok ? await aRes.json() : [],
+            incidents: iRes.ok ? await iRes.json() : []
+          });
+        } catch (e) { console.error(e); }
+      };
+      fetchSearchData();
+    }
+  }, [user, token]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.altKey && e.key === 'k') || (e.metaKey && e.key === 'k')) {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
       }
-    });
-    return () => {
-      socket.off('notification');
     };
-  }, [user]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
-  const fetchNotifications = async () => {
-    try {
-      const data = await api.get('/api/notifications');
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setNotifications([]);
-    }
-  };
-
-  const markNotificationsRead = async () => {
-    try {
-      await api.post('/api/notifications/read');
-      setNotifications(prev => prev.map(n => ({ ...n, lida: 1 })));
-    } catch (e) {
-      console.error('Falha ao marcar notificações como lidas', e);
-    }
-  };
+  // Moved notification logic to hook
 
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -240,7 +246,11 @@ export default function App() {
         </div>
 
         <div className="px-4 mb-3">
-           <Button className="w-full justify-start gap-2 h-9 font-bold text-xs shadow-none bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700/50" variant="secondary">
+           <Button 
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className="w-full justify-start gap-2 h-9 font-bold text-xs shadow-none bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700/50" 
+            variant="secondary"
+           >
               <div className="bg-zinc-100 text-[#09090b] rounded-sm p-0.5">
                  <X size={10} className="rotate-45" />
               </div>
@@ -348,58 +358,12 @@ export default function App() {
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </Button>
 
-            <div className="relative">
-              <Button
-                variant="ghost" 
-                size="icon"
-                onClick={() => {
-                  setIsNotifOpen(!isNotifOpen);
-                  if (!isNotifOpen) markNotificationsRead();
-                }}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground relative"
-              >
-                <Bell size={16} />
-                {notifications.some(n => !n.lida) && (
-                  <span className="absolute top-1.5 right-2 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
-                )}
-              </Button>
-
-              <AnimatePresence>
-                {isNotifOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-80 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden"
-                    >
-                      <div className="p-3 border-b border-border flex items-center justify-between bg-muted/30">
-                        <span className="text-xs font-semibold text-foreground">Notificações</span>
-                      </div>
-                      <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
-                        {notifications.length > 0 ? notifications.map((n, i) => (
-                          <div key={i} className={`p-3 border-b border-border last:border-0 hover:bg-muted/50 transition-colors ${!n.lida ? 'bg-primary/5' : ''}`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${!n.lida ? 'bg-primary' : 'bg-muted'}`}></div>
-                              <div>
-                                <p className="text-sm font-medium text-foreground mb-1 leading-none">{n.titulo}</p>
-                                <p className="text-xs text-muted-foreground leading-snug">{n.mensagem}</p>
-                              </div>
-                            </div>
-                          </div>
-                        )) : (
-                          <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
-                            <Bell size={24} className="mb-3 opacity-20" />
-                            <p className="text-sm font-medium">Sem notificações recentes</p>
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
+            <NotificationBell 
+              notifications={notifications}
+              isOpen={isNotifOpen}
+              onToggle={() => setIsNotifOpen(!isNotifOpen)}
+              onRead={markNotificationsRead}
+            />
             
             <div className="h-4 w-px bg-border mx-1"></div>
             <Button variant="outline" size="sm" className="h-8 text-xs font-bold gap-2">
@@ -439,6 +403,21 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+
+      <CommandPalette 
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigate={(tab, id) => {
+          setActiveTab(tab);
+          if (id) {
+            if (tab === 'incidents') setSelectedIncidentId(id);
+            if (tab === 'assets') setSelectedAsset(id);
+          }
+        }}
+        properties={searchData.properties}
+        assets={searchData.assets}
+        incidents={searchData.incidents}
+      />
     </div>
   );
 }

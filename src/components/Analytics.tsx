@@ -14,12 +14,18 @@ import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { RefreshButton } from './ui/RefreshButton';
 
+import { 
+  format, subWeeks, startOfWeek, endOfWeek, isWithinInterval, parseISO 
+} from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
 export default function Analytics() {
   const [data, setData] = useState<any>({
     incidents: [],
     assets: [],
     inventory: [],
-    plans: []
+    plans: [],
+    allocation: { percentages: { labor: 40, parts: 35, logistics: 15, consumables: 10 }, labor: 0, parts: 0, logistics: 0, consumables: 0 }
   });
   const [loading, setLoading] = useState(true);
 
@@ -31,25 +37,28 @@ export default function Analytics() {
     setLoading(true);
     try {
       const h = { Authorization: `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` };
-      const [incRes, assRes, invRes, plansRes] = await Promise.all([
+      const [incRes, assRes, invRes, plansRes, allocRes] = await Promise.all([
         fetch('/api/incidents', { headers: h }),
         fetch('/api/assets', { headers: h }),
         fetch('/api/inventory', { headers: h }),
-        fetch('/api/maintenance-plans', { headers: h })
+        fetch('/api/maintenance-plans', { headers: h }),
+        fetch('/api/analytics/resource-allocation', { headers: h })
       ]);
       
-      const [inc, ass, inv, plans] = await Promise.all([
+      const [inc, ass, inv, plans, allocation] = await Promise.all([
         incRes.ok ? incRes.json() : [],
         assRes.ok ? assRes.json() : [],
         invRes.ok ? invRes.json() : [],
-        plansRes.ok ? plansRes.json() : []
+        plansRes.ok ? plansRes.json() : [],
+        allocRes.ok ? allocRes.json() : null
       ]);
       
       setData({ 
         incidents: Array.isArray(inc) ? inc : [], 
         assets: Array.isArray(ass) ? ass : [], 
         inventory: Array.isArray(inv) ? inv : [], 
-        plans: Array.isArray(plans) ? plans : []
+        plans: Array.isArray(plans) ? plans : [],
+        allocation: allocation || { percentages: { labor: 40, parts: 35, logistics: 15, consumables: 10 }, labor: 0, parts: 0, logistics: 0, consumables: 0 }
       });
     } catch (e) {
       console.error(e);
@@ -76,6 +85,65 @@ export default function Analytics() {
   
   const plans = ensureArray<any>(data.plans);
   const totalBudgeted = plans.reduce((acc: number, p: any) => acc + (p.custo_estimado || 0), 0);
+
+  const totalIncidentsCost = incidents.reduce((acc: number, i: any) => acc + (i.custo_estimado || 0), 0);
+  const totalOperationalSpending = totalBudgeted + totalIncidentsCost;
+
+  // Efficiency Chart Dynamic Data (Last 7 Weeks)
+  const last7Weeks = Array.from({ length: 7 }, (_, i) => {
+    const date = subWeeks(new Date(), 6 - i);
+    const start = startOfWeek(date);
+    const end = endOfWeek(date);
+    
+    const weeklyIncidentsCost = incidents.reduce((acc, inc) => {
+      const incDate = parseISO(inc.created_at || inc.data_abertura);
+      if (isWithinInterval(incDate, { start, end })) {
+        return acc + (inc.custo_estimado || 0);
+      }
+      return acc;
+    }, 0);
+
+    const weeklyPlansCost = plans.reduce((acc, plan) => {
+      const planDate = parseISO(plan.proxima_data);
+      if (isWithinInterval(planDate, { start, end })) {
+        return acc + (plan.custo_estimado || 0);
+      }
+      return acc;
+    }, 0);
+
+    return {
+      label: `W${format(date, 'w')}`,
+      value: weeklyIncidentsCost + weeklyPlansCost,
+      total: weeklyIncidentsCost + weeklyPlansCost
+    };
+  });
+
+  const maxWeeklyCost = Math.max(...last7Weeks.map(w => w.value), 1);
+  const chartData = last7Weeks.map(w => ({
+    ...w,
+    percentage: Math.round((w.value / maxWeeklyCost) * 100)
+  }));
+
+  // Resource Allocation Dynamic Calculations
+  const alloc = data.allocation;
+  const laborAlloc = alloc.labor;
+  const partsAlloc = alloc.parts;
+  const logisticsAlloc = alloc.logistics;
+  const consumablesAlloc = alloc.consumables;
+  const percs = alloc.percentages;
+
+  // Audit Insight Logic
+  const propertyCosts: Record<string, number> = {};
+  incidents.forEach(inc => {
+    if (inc.property_id) {
+      propertyCosts[inc.property_id] = (propertyCosts[inc.property_id] || 0) + (inc.custo_estimado || 0);
+    }
+  });
+
+  const topPropertyId = Object.entries(propertyCosts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const topPropertyCost = propertyCosts[topPropertyId] || 0;
+  const topPropertyPercent = totalOperationalSpending > 0 ? Math.round((topPropertyCost / totalOperationalSpending) * 100) : 0;
+  const topPropertyName = assets.find(a => String(a.property_id) === String(topPropertyId))?.property_name || 'Propriedade Principal';
 
   if (loading && incidents.length === 0) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
@@ -113,17 +181,17 @@ export default function Analytics() {
             <CardDescription className="text-[10px] uppercase font-bold text-muted-foreground/40 mt-1">Comparação entre custo previsto e execução real de manutenção</CardDescription>
           </CardHeader>
           <CardContent className="h-[280px] flex items-end justify-between gap-4 px-8 pb-10">
-            {[65, 82, 45, 90, 75, 60, 40].map((val, i) => (
+            {chartData.map((week, i) => (
               <div key={i} className="flex-1 flex flex-col items-center gap-3 group">
                 <div className="w-full relative flex items-end justify-center">
                    <motion.div 
                     initial={{ height: 0 }}
-                    animate={{ height: `${val}%` }}
+                    animate={{ height: `${week.percentage}%` }}
                     className="w-full max-w-[48px] bg-primary/10 border-t-2 border-primary group-hover:bg-primary/20 transition-all"
                   />
-                  <span className="absolute -top-6 text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">{val}% CapEx</span>
+                  <span className="absolute -top-6 text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">{week.total.toLocaleString()} MT</span>
                 </div>
-                <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest">W{i+1}</span>
+                <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest">{week.label}</span>
               </div>
             ))}
           </CardContent>
@@ -136,10 +204,10 @@ export default function Analytics() {
             <CardDescription className="text-[10px] uppercase font-bold text-muted-foreground/40 mt-1">Distribuição percentual de custos operacionais</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 pt-4">
-             <AllocationRow label="Mão-de-Obra Técnica" value={42} color="bg-blue-500" price="84.000 MT" />
-             <AllocationRow label="Peças & Sobressalentes" value={38} color="bg-primary" price="76.000 MT" />
-             <AllocationRow label="Deslocação & Logística" value={15} color="bg-amber-500" price="30.000 MT" />
-             <AllocationRow label="Consumíveis Gerais" value={5} color="bg-muted-foreground" price="10.000 MT" />
+             <AllocationRow label="Mão-de-Obra Técnica" value={percs.labor} color="bg-blue-500" price={`${laborAlloc.toLocaleString()} MT`} />
+             <AllocationRow label="Peças & Sobressalentes" value={percs.parts} color="bg-primary" price={`${partsAlloc.toLocaleString()} MT`} />
+             <AllocationRow label="Deslocação & Logística" value={percs.logistics} color="bg-amber-500" price={`${logisticsAlloc.toLocaleString()} MT`} />
+             <AllocationRow label="Consumíveis Gerais" value={percs.consumables} color="bg-muted-foreground" price={`${consumablesAlloc.toLocaleString()} MT`} />
              
              <Separator className="my-6 opacity-30" />
              
@@ -149,7 +217,11 @@ export default function Analytics() {
                   <span className="text-[10px] font-bold uppercase tracking-widest">Insight de Auditoria</span>
                 </div>
                 <p className="text-[9px] text-muted-foreground leading-relaxed italic">
-                  O consumo de materiais está <span className="text-primary font-bold">12% acima da média</span> este mês devido a intervenções corretivas em ativos críticos na Propriedade "Maputo Central".
+                  {topPropertyId ? (
+                    <>O custo operacional está concentrado em <span className="text-primary font-bold">{topPropertyName}</span>, representando <span className="text-primary font-bold">{topPropertyPercent}% do total</span> este mês devido a intervenções corretivas e preventivas.</>
+                  ) : (
+                    <>Não foram registados custos operacionais significativos no período atual. A operação mantém-se estável.</>
+                  )}
                 </p>
              </div>
           </CardContent>

@@ -6,6 +6,7 @@
 
 import { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { Server } from "socket.io";
 
 export interface MaintenanceSchedule {
   id: string;
@@ -45,11 +46,13 @@ type LogLevel = 'INFO' | 'ERROR' | 'WARNING' | 'DEBUG';
 export class MaintenanceScheduler {
   private supabase: SupabaseClient;
   private logToFile: (level: LogLevel, message: string, data?: any) => void;
+  private io: Server | null = null;
   private intervalId: NodeJS.Timeout | null = null;
 
-  constructor(supabase: SupabaseClient, logToFile: (level: LogLevel, message: string, data?: any) => void) {
+  constructor(supabase: SupabaseClient, logToFile: (level: LogLevel, message: string, data?: any) => void, io?: Server) {
     this.supabase = supabase;
     this.logToFile = logToFile;
+    if (io) this.io = io;
   }
 
   /**
@@ -233,6 +236,15 @@ export class MaintenanceScheduler {
       try {
         await this.supabase.from('notifications').insert([notif]);
         this.logToFile("DEBUG", "Notificação criada para o criador do agendamento");
+        
+        // Emit via socket for real-time update
+        if (this.io) {
+          this.io.emit("notification", { 
+            userId: schedule.created_by, 
+            titulo: notif.titulo, 
+            mensagem: notif.mensagem 
+          });
+        }
       } catch (err: any) {
         this.logToFile("WARNING", "Erro ao criar notificação", { error: err.message });
       }

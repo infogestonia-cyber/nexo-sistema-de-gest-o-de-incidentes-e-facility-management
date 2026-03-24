@@ -21,6 +21,7 @@ import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { ScrollArea } from './ui/scroll-area';
 import { Label } from './ui/label';
 import { MagicBadge } from './ui/magic';
@@ -101,6 +102,29 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
       socket.off("incident-update");
     };
   }, [id]);
+
+  useEffect(() => {
+    // Intercept hardware/PWA back button
+    window.history.pushState({ modal: 'incident-detail', id }, '');
+    
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      onBack();
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [id, onBack]);
+
+  const handleUIBack = () => {
+    if (window.history.state?.modal === 'incident-detail' && window.history.state?.id === id) {
+      window.history.back(); // This will trigger popstate, which calls onBack
+    } else {
+      onBack();
+    }
+  };
 
   const fetchIncident = async () => {
     try {
@@ -377,6 +401,21 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
     }
   };
 
+  const handleApprovePart = async (partId: string) => {
+    if (!window.confirm('Aprovar este material? O stock será descontado do inventário.')) return;
+    setLoadingPart(true);
+    try {
+      await api.patch(`/api/incidents/${id}/parts/${partId}/approve`, {});
+      fetchPartsUsed();
+      fetchIncident();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.error || 'Erro ao aprovar material');
+    } finally {
+      setLoadingPart(false);
+    }
+  };
+
   const handleAddAction = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmittingAction(true);
@@ -425,7 +464,7 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
           <Button
             variant="outline"
             size="icon"
-            onClick={onBack}
+            onClick={handleUIBack}
             className="h-8 w-8 rounded-md"
           >
             <ArrowLeft size={14} />
@@ -605,21 +644,21 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                         />
                       </div>
                       <div className="w-full md:w-56 flex flex-col gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-[10px] uppercase text-muted-foreground font-bold">Estado</Label>
-                          <Select value={newStatus} onValueChange={setNewStatus}>
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Estado" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Aberto">Aberto</SelectItem>
-                              <SelectItem value="Atribuído">Atribuído</SelectItem>
-                              <SelectItem value="Em progresso">Em progresso</SelectItem>
-                              <SelectItem value="Resolvido">Resolvido</SelectItem>
-                              <SelectItem value="Fechado">Fechado</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        {['Gestor', 'Administrador'].includes(user.perfil) && (
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase text-muted-foreground font-bold">Estado</Label>
+                            <Select value={newStatus} onValueChange={setNewStatus}>
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Estado" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Aberto">Aberto</SelectItem>
+                                <SelectItem value="Em progresso">Em progresso</SelectItem>
+                                <SelectItem value="Resolvido">Resolvido</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
                         
                         {canAssignIncidents(user.perfil) && (
                           <div className="space-y-1">
@@ -688,7 +727,15 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
         </div>
 
         {/* Right Column: AI Insights & Operations */}
-        <div className="space-y-6 text-sm">
+        <div className="text-sm">
+          <Tabs defaultValue="geral" className="w-full">
+            <TabsList className="flex w-full mb-6 bg-muted/50 border border-border p-1 rounded-md h-10">
+              <TabsTrigger value="geral" className="flex-1 text-[10px] font-bold uppercase tracking-widest h-full">Tempo</TabsTrigger>
+              <TabsTrigger value="materiais" className="flex-1 text-[10px] font-bold uppercase tracking-widest h-full">Specs</TabsTrigger>
+              <TabsTrigger value="media" className="flex-1 text-[10px] font-bold uppercase tracking-widest h-full">Media</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="geral" className="space-y-6 mt-0 focus-visible:outline-none">
           
           {/* Labor Tracking Section - Stark Modern */}
           <Card className="shadow-none border-border">
@@ -761,7 +808,9 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
               })()}
             </CardContent>
           </Card>
+            </TabsContent>
 
+            <TabsContent value="materiais" className="space-y-6 mt-0 focus-visible:outline-none">
           {/* Checklist Section - Minimalist */}
           <Card className="shadow-none border-border">
             <CardHeader className="p-4 border-b border-border flex flex-row items-center justify-between space-y-0">
@@ -774,26 +823,28 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
               </span>
             </CardHeader>
             <CardContent className="p-4 space-y-4">
-              <form onSubmit={handleAddChecklist} className="flex gap-2">
-                <Input
-                  type="text"
-                  placeholder="Nova tarefa..."
-                  value={newChecklistItem}
-                  onChange={(e) => setNewChecklistItem(e.target.value)}
-                  disabled={loadingChecklist}
-                  className="flex-1 h-8 text-xs bg-muted/10 border-border"
-                  required
-                />
-                <Button 
-                  type="submit" 
-                  size="icon"
-                  disabled={loadingChecklist}
-                  variant="outline"
-                  className="h-8 w-8"
-                >
-                  {loadingChecklist ? <Activity size={12} className="animate-spin" /> : <Plus size={14} />}
-                </Button>
-              </form>
+              {['Gestor', 'Administrador'].includes(user.perfil) && (
+                <form onSubmit={handleAddChecklist} className="flex gap-2">
+                  <Input
+                    type="text"
+                    placeholder="Nova tarefa..."
+                    value={newChecklistItem}
+                    onChange={(e) => setNewChecklistItem(e.target.value)}
+                    disabled={loadingChecklist}
+                    className="flex-1 h-8 text-xs bg-muted/10 border-border"
+                    required
+                  />
+                  <Button 
+                    type="submit" 
+                    size="icon"
+                    disabled={loadingChecklist}
+                    variant="outline"
+                    className="h-8 w-8"
+                  >
+                    {loadingChecklist ? <Activity size={12} className="animate-spin" /> : <Plus size={14} />}
+                  </Button>
+                </form>
+              )}
               
               <div className="space-y-1.5">
                 {checklists.map((c) => (
@@ -866,33 +917,56 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
                 {partsUsed.map((p) => (
                   <div key={p.id} className="py-3 flex justify-between items-start group">
                     <div className="min-w-0 pr-2">
-                      <p className="text-xs font-semibold truncate text-foreground">{p.inventory?.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className={`text-xs font-semibold truncate ${p.approved === false ? 'text-amber-500' : 'text-foreground'}`}>
+                          {p.inventory?.name}
+                        </p>
+                        {p.approved === false && (
+                          <Badge variant="outline" className="text-[8px] px-1 py-0 h-4 border-amber-500/50 text-amber-500">Pendente</Badge>
+                        )}
+                      </div>
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {p.quantity_used} x {p.inventory?.unit_cost?.toLocaleString('pt-MZ')} MT
+                        {p.quantity_used} x {p.inventory?.unit_cost?.toLocaleString('pt-MZ')} MT 
+                        {p.approved === false && " (Pendente de Aprovação)"}
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <span className="text-xs font-mono font-bold">
                         {(p.quantity_used * (p.inventory?.unit_cost || 0)).toLocaleString('pt-MZ')} <span className="text-[10px]">MT</span>
                       </span>
-                      {(p.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeletePart(p.id)}
-                          disabled={loadingPart}
-                          className="w-6 h-6 text-muted-foreground/30 hover:text-destructive opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 size={12} />
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-1 opacity-100 group-hover:opacity-100 transition-opacity">
+                        {p.approved === false && ['Gestor', 'Administrador'].includes(user.perfil) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleApprovePart(p.id)}
+                            disabled={loadingPart}
+                            className="h-6 text-[9px] px-2 font-bold border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+                          >
+                            APROVAR
+                          </Button>
+                        )}
+                        {(p.user_id === user.id || ['Administrador', 'Gestor'].includes(user.perfil)) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeletePart(p.id)}
+                            disabled={loadingPart}
+                            className="w-6 h-6 text-muted-foreground/30 hover:text-destructive"
+                          >
+                            <Trash2 size={12} />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
+            </TabsContent>
 
+            <TabsContent value="media" className="space-y-6 mt-0 focus-visible:outline-none">
           {/* Multimedia Gallery - Clean Grid */}
           <Card className="shadow-none border-border">
             <CardHeader className="p-4 border-b border-border flex flex-row items-center justify-between space-y-0">
@@ -925,6 +999,8 @@ export default function IncidentDetail({ id, onBack }: { id: string, onBack: () 
               </div>
             </CardContent>
           </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>

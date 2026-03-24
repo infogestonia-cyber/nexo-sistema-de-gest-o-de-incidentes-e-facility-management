@@ -86,6 +86,7 @@ export default function Inventory() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.property_id) return;
+    if (!formData.asset_id || formData.asset_id === 'none') return;
     const isEditing = !!selectedItem;
     const endpoint = isEditing ? `/api/inventory/${selectedItem.id}` : '/api/inventory';
     setSubmitting(true);
@@ -332,23 +333,54 @@ export default function Inventory() {
             <DialogDescription>Configure os detalhes técnicos e financeiros do material de inventário.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+
+            {/* Step guide */}
+            <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest select-none">
+              <span className={`px-2 py-1 rounded ${formData.property_id ? 'bg-emerald-500/20 text-emerald-500 line-through' : 'bg-primary/10 text-primary'}`}>① Propried.</span>
+              <span className="text-muted-foreground/30">›</span>
+              <span className={`px-2 py-1 rounded ${formData.asset_id && formData.asset_id !== 'none' ? 'bg-emerald-500/20 text-emerald-500 line-through' : formData.property_id ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground/40'}`}>② Ativo</span>
+              <span className="text-muted-foreground/30">›</span>
+              <span className={`px-2 py-1 rounded ${formData.asset_id && formData.asset_id !== 'none' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground/40'}`}>③  Material</span>
+            </div>
+
+            {/* Contextual alerts */}
+            {!formData.property_id && (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 font-semibold">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <p>Selecione primeiro a <strong>Propriedade</strong> a que este material pertence.</p>
+              </div>
+            )}
+            {formData.property_id && (!formData.asset_id || formData.asset_id === 'none') && (() => {
+              const propAssets = assets.filter(a => a.property_id?.toString() === formData.property_id);
+              return propAssets.length === 0 ? (
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-400 font-semibold">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  <p>Esta propriedade ainda não tem ativos registados. <strong>Registe primeiro um ativo</strong> na secção «Ativos» para poder vincular um material.</p>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-400 font-semibold">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  <p>Selecione a qual <strong>Ativo</strong> este material está associado. Todo o material deve estar vinculado a um ativo da propriedade.</p>
+                </div>
+              );
+            })()}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Propriedade / Unidade *</Label>
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">① Propriedade / Unidade *</Label>
                 <Select value={formData.property_id} onValueChange={val => setFormData({...formData, property_id: val, asset_id: ''})}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Selecione a propriedade..." /></SelectTrigger>
                   <SelectContent>
                     {properties.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.endereco}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo Vinculado (Opcional)</Label>
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">② Ativo Vinculado *</Label>
                 <Select value={formData.asset_id} onValueChange={val => setFormData({...formData, asset_id: val})} disabled={!formData.property_id}>
-                  <SelectTrigger><SelectValue placeholder="Sem ativo fixo" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={!formData.property_id ? 'Selecione a propriedade primeiro' : 'Selecione o ativo...'} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Nenhum</SelectItem>
-                    {assets.filter(a => a.property_id.toString() === formData.property_id).map(a => (
+                    {assets.filter(a => a.property_id?.toString() === formData.property_id).map(a => (
                       <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>
                     ))}
                   </SelectContent>
@@ -382,7 +414,12 @@ export default function Inventory() {
             </div>
             <DialogFooter className="gap-3 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="flex-1 font-bold">
+              <Button
+                type="submit"
+                disabled={submitting || !formData.property_id || !formData.asset_id || formData.asset_id === 'none'}
+                className="flex-1 font-bold"
+                title={!formData.property_id ? 'Selecione uma propriedade primeiro' : (!formData.asset_id || formData.asset_id === 'none') ? 'Selecione um ativo primeiro' : ''}
+              >
                 {submitting ? 'A processar...' : 'Guardar Material'}
               </Button>
             </DialogFooter>

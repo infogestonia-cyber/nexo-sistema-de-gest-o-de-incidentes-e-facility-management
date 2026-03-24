@@ -36,8 +36,14 @@ async function apiRequest(endpoint: string, options: RequestOptions = {}) {
 
     // Global Interceptor for auth errors
     if (response.status === 401 || response.status === 403) {
-      console.warn(`[API] Auth error (${response.status}) on ${endpoint}. Force log out...`);
-      handleGlobalLogout();
+      // Don't auto-logout/reload on login or auth endpoints (let the UI handle it)
+      const isAuthEndpoint = endpoint.includes('/login') || endpoint.includes('/auth/cliente');
+      
+      if (!isAuthEndpoint) {
+        console.warn(`[API] Auth error (${response.status}) on ${endpoint}. Force log out...`);
+        handleGlobalLogout();
+      }
+      
       const errorData = await response.json().catch(() => ({}));
       throw { status: response.status, ...errorData };
     }

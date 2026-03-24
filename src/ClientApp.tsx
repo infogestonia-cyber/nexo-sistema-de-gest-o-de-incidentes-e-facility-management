@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { LayoutDashboard, FileText, Cpu, PlusCircle, LogOut, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, Cpu, PlusCircle, LogOut, ShieldCheck, Bell } from 'lucide-react';
 import { api } from './services/api';
+import socket, { connectSocket, disconnectSocket } from './services/socketService';
+import { useNotifications } from './hooks/useNotifications';
+import { NotificationBell } from './components/ui/NotificationBell';
 import ClientLogin from './components/cliente/ClientLogin';
 import ClientDashboard from './components/cliente/ClientDashboard';
 import ClientOrders from './components/cliente/ClientOrders';
@@ -25,6 +28,7 @@ export default function ClientApp() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isValidating, setIsValidating] = useState(!!(sessionStorage.getItem('cliente_token') || localStorage.getItem('cliente_token')));
   const [isSyncing, setIsSyncing] = useState(false);
+  const { notifications, isOpen: isNotifOpen, setIsOpen: setIsNotifOpen, markAsRead: markNotificationsRead } = useNotifications(cliente);
 
   React.useEffect(() => {
     const savedToken = (sessionStorage.getItem('cliente_token') || localStorage.getItem('cliente_token'));
@@ -32,10 +36,13 @@ export default function ClientApp() {
 
     if (savedToken && savedCliente) {
       setToken(savedToken);
-      setCliente(JSON.parse(savedCliente));
+      const c = JSON.parse(savedCliente);
+      setCliente(c);
+      connectSocket(c);
     }
     setIsValidating(false);
-  }, []);
+    return () => disconnectSocket();
+  }, [token]);
 
   const handleLogin = async (clienteData: any, clienteToken: string) => {
     setIsSyncing(true);
@@ -43,6 +50,7 @@ export default function ClientApp() {
     localStorage.setItem('cliente_token', clienteToken);
     localStorage.setItem('cliente_user', JSON.stringify(clienteData));
     setCliente(clienteData);
+    connectSocket(clienteData);
     setIsSyncing(false);
   };
 
@@ -51,6 +59,7 @@ export default function ClientApp() {
     setToken(null);
     localStorage.removeItem('cliente_user');
     localStorage.removeItem('cliente_token');
+    disconnectSocket();
   };
 
   if (isValidating || isSyncing) {
@@ -94,12 +103,21 @@ export default function ClientApp() {
             <p className="text-sm font-black text-white tracking-tight">{cliente.nome}</p>
           </div>
         </div>
-        <button 
-          onClick={handleLogout} 
-          className="p-2.5 bg-white/5 text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all border border-white/5 active:scale-95"
-        >
-          <LogOut size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell 
+            notifications={notifications}
+            isOpen={isNotifOpen}
+            onToggle={() => setIsNotifOpen(!isNotifOpen)}
+            onRead={markNotificationsRead}
+            className="p-2.5 bg-white/5 text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all border border-white/5 active:scale-95"
+          />
+          <button 
+            onClick={handleLogout} 
+            className="p-2.5 bg-white/5 text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all border border-white/5 active:scale-95"
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Content */}

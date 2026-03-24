@@ -5,7 +5,7 @@ import {
   Search, X, MoreVertical, DollarSign, Activity, Shield,
   Zap, Eye, Edit2, Trash2, Check, AlertTriangle,
   ChevronDown, FileText, Wrench, ListChecks, History as HistoryIcon,
-  ArrowUpRight
+  ArrowUpRight, MoreHorizontal
 } from 'lucide-react';
 import { 
   format, 
@@ -43,6 +43,7 @@ export default function Maintenance() {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
+  const [properties, setProperties] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<MaintenanceTab>('executions');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -50,11 +51,13 @@ export default function Maintenance() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [selectedDay, setSelectedDay] = useState<{date: string; plans: any[]} | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
   const [currentPage, setCurrentPage] = useState(1);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const itemsPerPage = 8;
 
   const [currentUser] = useState<any>(() => {
@@ -64,17 +67,38 @@ export default function Maintenance() {
     } catch { return {}; }
   });
 
-  const [formData, setFormData] = useState({
+  const defaultForm = {
     asset_id: '',
+    property_id: '',
     tipo: 'Preventiva',
     periodicidade: 'Mensal',
     proxima_data: format(new Date(), 'yyyy-MM-dd'),
+    duracao: '',
+    data_fim: '',
+    prioridade: 'Normal',
     responsavel_id: '',
     custo_estimado: '',
     descricao: '',
-  });
+  };
+
+  const [formData, setFormData] = useState(defaultForm);
+
+  // Auto-compute data_fim when proxima_data or duracao changes
+  const computeDataFim = (start: string, periodicidade: string, duracao: string): string => {
+    if (!start || !duracao || periodicidade === 'Única') return '';
+    const n = parseInt(duracao);
+    if (!n || n <= 0) return '';
+    const base = new Date(start);
+    const freqMultiplier: Record<string, number> = {
+      'Diária': 1, 'Semanal': 7, 'Mensal': 30, 'Trimestral': 91, 'Anual': 365
+    };
+    const days = (freqMultiplier[periodicidade] || 1) * n;
+    base.setDate(base.getDate() + days);
+    return format(base, 'yyyy-MM-dd');
+  };
 
   const [automationFormData, setAutomationFormData] = useState({
+    property_id: '',
     asset_id: '',
     task_description: '',
     frequency_days: '',
@@ -87,14 +111,16 @@ export default function Maintenance() {
   }, []);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
       const h = { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` };
-      const [execRes, schedRes, histRes, assetsRes, usersRes] = await Promise.all([
+      const [execRes, schedRes, histRes, assetsRes, usersRes, propRes] = await Promise.all([
         fetch('/api/maintenance/executions', { headers: h }),
         fetch('/api/maintenance/schedules', { headers: h }),
         fetch('/api/maintenance/history', { headers: h }),
         fetch('/api/assets', { headers: h }),
-        fetch('/api/users', { headers: h })
+        fetch('/api/users', { headers: h }),
+        fetch('/api/properties', { headers: h })
       ]);
 
       const execData = execRes.ok ? await execRes.json() : [];
@@ -102,12 +128,14 @@ export default function Maintenance() {
       const histData = histRes.ok ? await histRes.json() : [];
       const assetsData = assetsRes.ok ? await assetsRes.json() : [];
       const usersData = usersRes.ok ? await usersRes.json() : [];
+      const propData = propRes.ok ? await propRes.json() : [];
 
       setPlans(Array.isArray(execData) ? execData : []);
       setSchedules(Array.isArray(schedData) ? schedData : []);
       setHistory(Array.isArray(histData) ? histData : []);
       setAssets(Array.isArray(assetsData) ? assetsData : []);
       setUsers(Array.isArray(usersData) ? usersData : []);
+      setProperties(Array.isArray(propData) ? propData : []);
     } catch (err) {
       console.error('Erro ao carregar dados de manutenção:', err);
     } finally {
@@ -115,23 +143,45 @@ export default function Maintenance() {
     }
   };
 
+  const handleEditPlan = (plan: any) => {
+    setEditingId(plan.id);
+    setFormData({
+      asset_id: plan.asset_id || '',
+      property_id: plan.property_id || '',
+      tipo: plan.tipo || 'Preventiva',
+      periodicidade: plan.periodicidade || 'Mensal',
+      proxima_data: plan.proxima_data || format(new Date(), 'yyyy-MM-dd'),
+      duracao: plan.duracao || '',
+      data_fim: plan.data_fim || '',
+      prioridade: plan.prioridade || 'Normal',
+      responsavel_id: plan.responsavel_id || '',
+      custo_estimado: plan.custo_estimado?.toString() || '',
+      descricao: plan.descricao || '',
+    });
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.asset_id || !formData.responsavel_id) return;
     setSubmitting(true);
     try {
-      const res = await fetch('/api/maintenance-plans', {
-        method: 'POST',
+      const url = editingId ? `/api/maintenance-plans/${editingId}` : '/api/maintenance-plans';
+      const method = editingId ? 'PATCH' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` },
         body: JSON.stringify(formData)
       });
       if (res.ok) {
         setIsModalOpen(false);
+        setEditingId(null);
         fetchData();
-        setFormData({ asset_id: '', tipo: 'Preventiva', periodicidade: 'Mensal', proxima_data: format(new Date(), 'yyyy-MM-dd'), responsavel_id: '', custo_estimado: '', descricao: '' });
+        setFormData(defaultForm);
       } else {
         const errData = await res.json().catch(() => ({}));
-        alert(errData.error || 'Ocorreu um erro ao criar o plano de manutenção.');
+        alert(errData.error || `Ocorreu um erro ao ${editingId ? 'atualizar' : 'criar'} o plano de manutenção.`);
       }
     } finally {
       setSubmitting(false);
@@ -157,7 +207,7 @@ export default function Maintenance() {
       });
       if (res.ok) {
         setIsAutomationModalOpen(false);
-        setAutomationFormData({ asset_id: '', task_description: '', frequency_days: '', threshold_value: '', categoria: 'Preventiva' });
+        setAutomationFormData({ property_id: '', asset_id: '', task_description: '', frequency_days: '', threshold_value: '', categoria: 'Preventiva' });
         fetchData();
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -196,6 +246,24 @@ export default function Maintenance() {
       });
       if (res.ok) {
         fetchData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteSchedule = async (id: string) => {
+    if (!confirm('Tem a certeza que deseja eliminar este agendamento automático?')) return;
+    try {
+      const res = await fetch(`/api/maintenance/schedules/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${(sessionStorage.getItem('token') || localStorage.getItem('token'))}` }
+      });
+      if (res.ok) {
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao eliminar agendamento');
       }
     } catch (e) {
       console.error(e);
@@ -354,7 +422,7 @@ export default function Maintenance() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-                              {plan.periodicidade}
+                               {plan.periodicidade}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
@@ -385,7 +453,7 @@ export default function Maintenance() {
                                   <DropdownMenuItem onClick={() => handleMarkComplete(plan)}>
                                     <Check size={14} className="mr-2" /> Concluir Trabalho
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleEditPlan(plan)}>
                                     <Edit2 size={14} className="mr-2" /> Editar Plano
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
@@ -428,21 +496,74 @@ export default function Maintenance() {
                     const endDate = endOfWeek(monthEnd);
                     const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
+                    // Expand recurring plans into all occurrences visible in the calendar range
+                    const freqDays: Record<string, number> = {
+                      'Diária': 1, 'Semanal': 7, 'Mensal': 30, 'Trimestral': 91, 'Anual': 365
+                    };
+
+                    const parseLocal = (s: string) => {
+                      const [y, m, d] = s.split('-').map(Number);
+                      return new Date(y, m - 1, d);
+                    };
+
+                    const plansByDay: Record<string, any[]> = {};
+                    filteredPlans.forEach(p => {
+                      const freq = freqDays[p.periodicidade];
+                      const planStart = parseLocal(p.proxima_data);
+                      const planEnd = p.data_fim ? parseLocal(p.data_fim) : endDate;
+
+                      if (!freq) {
+                        const key = p.proxima_data;
+                        if (!plansByDay[key]) plansByDay[key] = [];
+                        plansByDay[key].push(p);
+                      } else {
+                        let cur = new Date(planStart);
+                        while (cur <= planEnd && cur <= endDate) {
+                          if (cur >= startDate) {
+                            const key = format(cur, 'yyyy-MM-dd');
+                            if (!plansByDay[key]) plansByDay[key] = [];
+                            plansByDay[key].push(p);
+                          }
+                          cur = new Date(cur.getTime() + freq * 24 * 60 * 60 * 1000);
+                        }
+                      }
+                    });
+
                     return calendarDays.map((day, i) => {
                       const dayStr = format(day, 'yyyy-MM-dd');
-                      const dayPlans = filteredPlans.filter(p => p.proxima_data === dayStr);
+                      const dayPlans = plansByDay[dayStr] || [];
                       const isCurrentMonth = isSameMonth(day, monthStart);
+                      const hasHighPriority = dayPlans.some(p => p.prioridade === 'Alta' || p.prioridade === 'Urgente');
 
                       return (
-                        <div key={i} className={`bg-card h-24 p-2 relative group hover:bg-muted/10 transition-colors flex flex-col ${!isCurrentMonth ? 'opacity-20' : ''}`}>
+                        <div
+                          key={i}
+                          onClick={() => { if (dayPlans.length > 0) setSelectedDay({ date: dayStr, plans: dayPlans }); }}
+                          className={`bg-card h-24 p-2 relative transition-colors flex flex-col ${
+                            !isCurrentMonth ? 'opacity-20' : ''
+                          } ${dayPlans.length > 0 ? 'cursor-pointer hover:bg-muted/20' : ''} ${
+                            hasHighPriority ? 'ring-1 ring-inset ring-red-500/30' : ''
+                          }`}
+                        >
                           <span className={`text-[10px] font-bold ${isSameDay(day, new Date()) ? 'text-primary' : 'text-muted-foreground'}`}>{format(day, 'd')}</span>
                           <div className="mt-1 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
-                            {dayPlans.map(p => (
-                              <div key={p.id} onClick={() => setSelectedPlan(p)} className={`px-1.5 py-0.5 text-[8px] font-bold truncate rounded-sm border cursor-pointer hover:brightness-90 ${p.tipo === 'Preventiva' ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}>
-                                {p.asset_name}
-                              </div>
-                            ))}
+                            {dayPlans.map((p, idx) => {
+                              const isHighPriority = p.prioridade === 'Alta' || p.prioridade === 'Urgente';
+                              const colorClass = isHighPriority
+                                ? 'bg-red-600/20 border-red-500/60 text-red-500'
+                                : p.tipo === 'Preventiva'
+                                ? 'bg-primary/10 border-primary/20 text-primary'
+                                : 'bg-destructive/10 border-destructive/20 text-destructive';
+                              return (
+                                <div key={`${p.id}-${idx}`} className={`px-1.5 py-0.5 text-[8px] font-bold truncate rounded-sm border ${colorClass}`}>
+                                  {isHighPriority && '🔴 '}{p.asset_name}
+                                </div>
+                              );
+                            })}
                           </div>
+                          {dayPlans.length > 0 && (
+                            <span className="absolute bottom-1 right-1.5 text-[8px] font-black text-muted-foreground/40">{dayPlans.length}</span>
+                          )}
                         </div>
                       );
                     });
@@ -485,9 +606,24 @@ export default function Maintenance() {
                           <Badge variant="outline" className="text-[9px] h-4 bg-primary/10 text-primary border-primary/20">ATIVO</Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 hover:text-foreground">
-                            <MoreHorizontal size={14}/>
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/30 hover:text-foreground">
+                                <MoreHorizontal size={14}/>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground">Opções</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-xs text-destructive focus:text-destructive cursor-pointer"
+                                onClick={() => handleDeleteSchedule(s.id)}
+                              >
+                                <Trash2 size={14} className="mr-2" />
+                                Eliminar Trigger
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -576,20 +712,47 @@ export default function Maintenance() {
 
       {/* New Plan Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Novo Plano de Manutenção</DialogTitle>
-            <DialogDescription>Registe um protocolo preventivo ou correctivo para um ativo.</DialogDescription>
+            <DialogTitle>{editingId ? 'Editar Plano de Manutenção' : 'Novo Plano de Manutenção'}</DialogTitle>
+            <DialogDescription>{editingId ? 'Atualize os detalhes do plano de manutenção.' : 'Registe um protocolo preventivo ou correctivo para um ativo.'}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-             <div className="space-y-2">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Equipamento / Ativo</Label>
-              <Select value={formData.asset_id} onValueChange={val => setFormData({...formData, asset_id: val})}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {assets.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+             <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">① Propriedade</Label>
+                <Select value={formData.property_id} onValueChange={val => setFormData({...formData, property_id: val, asset_id: ''})}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a propriedade..." /></SelectTrigger>
+                  <SelectContent>
+                    {properties.map(p => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        {p.nome || p.endereco || `Propriedade ${p.id.substring(0,8)}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">② Equipamento / Ativo</Label>
+                <Select
+                  value={formData.asset_id}
+                  onValueChange={val => setFormData({...formData, asset_id: val})}
+                  disabled={!formData.property_id}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={!formData.property_id ? 'Selecione a propriedade primeiro' : 'Selecione o ativo...'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assets
+                      .filter(a => a.property_id?.toString() === formData.property_id)
+                      .map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>)
+                    }
+                    {formData.property_id && assets.filter(a => a.property_id?.toString() === formData.property_id).length === 0 && (
+                      <div className="px-3 py-2 text-[10px] text-muted-foreground italic">Sem ativos nesta propriedade</div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -607,6 +770,7 @@ export default function Maintenance() {
                 <Select value={formData.periodicidade} onValueChange={val => setFormData({...formData, periodicidade: val})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="Diária">Diária</SelectItem>
                     <SelectItem value="Única">Única</SelectItem>
                     <SelectItem value="Semanal">Semanal</SelectItem>
                     <SelectItem value="Mensal">Mensal</SelectItem>
@@ -616,35 +780,65 @@ export default function Maintenance() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Próxima Data</Label>
-                <Input type="date" value={formData.proxima_data} onChange={e => setFormData({...formData, proxima_data: e.target.value})} />
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data de Início</Label>
+                <Input type="date" value={formData.proxima_data} onChange={e => setFormData({...formData, proxima_data: e.target.value, data_fim: computeDataFim(e.target.value, formData.periodicidade, formData.duracao)})} />
               </div>
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Budget Estimado (MT)</Label>
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">
+                  {formData.periodicidade === 'Diária' ? 'Nº de Dias' : formData.periodicidade === 'Semanal' ? 'Nº de Semanas' : formData.periodicidade === 'Mensal' ? 'Nº de Meses' : formData.periodicidade === 'Trimestral' ? 'Nº de Trimestres' : formData.periodicidade === 'Anual' ? 'Nº de Anos' : 'Duração'}
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  disabled={formData.periodicidade === 'Única'}
+                  placeholder={formData.periodicidade === 'Única' ? 'N/A' : 'ex: 30'}
+                  value={formData.duracao}
+                  onChange={e => setFormData({...formData, duracao: e.target.value, data_fim: computeDataFim(formData.proxima_data, formData.periodicidade, e.target.value)})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data de Fim (auto)</Label>
+                <Input type="date" value={formData.data_fim} readOnly className="opacity-60 cursor-not-allowed" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Budget (MT)</Label>
                 <Input type="number" placeholder="0.00" value={formData.custo_estimado} onChange={e => setFormData({...formData, custo_estimado: e.target.value})} />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Técnico Responsável</Label>
-              <Select value={formData.responsavel_id} onValueChange={val => setFormData({...formData, responsavel_id: val})}>
-                <SelectTrigger><SelectValue placeholder="Selecione técnico..." /></SelectTrigger>
-                <SelectContent>
-                  {users.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Técnico Respotável</Label>
+                <Select value={formData.responsavel_id} onValueChange={val => setFormData({...formData, responsavel_id: val})}>
+                  <SelectTrigger><SelectValue placeholder="Selecione técnico..." /></SelectTrigger>
+                  <SelectContent>
+                    {users.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Prioridade</Label>
+                <Select value={formData.prioridade} onValueChange={val => setFormData({...formData, prioridade: val})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Normal">Normal</SelectItem>
+                    <SelectItem value="Alta">Alta ⚠️</SelectItem>
+                    <SelectItem value="Urgente">Urgente 🔴</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label className="text-[10px] uppercase font-bold text-muted-foreground">Instruções Técnicas</Label>
               <Textarea placeholder="Descreva as tarefas a realizar..." rows={3} value={formData.descricao} onChange={e => setFormData({...formData, descricao: e.target.value})} />
             </div>
             <DialogFooter className="gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="flex-1 font-bold">
-                {submitting ? 'A criar...' : 'Confirmar Protocolo'}
-              </Button>
-            </DialogFooter>
+               <Button type="button" variant="outline" className="flex-1" onClick={() => { setIsModalOpen(false); setEditingId(null); setFormData(defaultForm); }}>Cancelar</Button>
+               <Button type="submit" disabled={submitting} className="flex-1 font-bold">
+                 {submitting ? (editingId ? 'A atualizar...' : 'A criar...') : (editingId ? 'Atualizar Protocolo' : 'Confirmar Protocolo')}
+               </Button>
+             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -657,14 +851,31 @@ export default function Maintenance() {
             <DialogDescription>Crie gatilhos automáticos baseados em tempo ou uso.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAutomationSubmit} className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo Alvo</Label>
-              <Select value={automationFormData.asset_id} onValueChange={val => setAutomationFormData({...automationFormData, asset_id: val})}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {assets.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Propriedade</Label>
+                <Select value={automationFormData.property_id} onValueChange={val => setAutomationFormData({...automationFormData, property_id: val, asset_id: ''})}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {properties.map(p => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        {p.nome || p.endereco || `Propriedade ${p.id.substring(0,8)}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo Alvo</Label>
+                <Select value={automationFormData.asset_id} onValueChange={val => setAutomationFormData({...automationFormData, asset_id: val})}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {assets
+                      .filter(a => !automationFormData.property_id || a.property_id?.toString() === automationFormData.property_id.toString())
+                      .map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label className="text-[10px] uppercase font-bold text-muted-foreground">Descrição da Tarefa Automática</Label>
@@ -690,6 +901,63 @@ export default function Maintenance() {
         </DialogContent>
       </Dialog>
 
+      {/* Day View Modal - click on a date to see all plans */}
+      <Dialog open={!!selectedDay} onOpenChange={() => setSelectedDay(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedDay && format(new Date(selectedDay.date + 'T12:00:00'), "EEEE, d 'de' MMMM yyyy", { locale: ptBR })}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedDay?.plans.length} plano(s) agendado(s) para este dia
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-2 max-h-[60vh] overflow-y-auto pr-1">
+            {selectedDay?.plans.map((p, idx) => {
+              const isHighPriority = p.prioridade === 'Alta' || p.prioridade === 'Urgente';
+              return (
+                <div
+                  key={`${p.id}-${idx}`}
+                  onClick={() => { setSelectedDay(null); setSelectedPlan(p); }}
+                  className={`p-4 rounded-xl border cursor-pointer hover:brightness-95 transition-all ${
+                    isHighPriority ? 'bg-red-500/10 border-red-500/30' : 'bg-muted/20 border-border'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                        {isHighPriority && (
+                          <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
+                            {p.prioridade}
+                          </span>
+                        )}
+                        <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                          {p.periodicidade}
+                        </span>
+                        <span className="text-[8px] font-bold uppercase text-muted-foreground">{p.tipo}</span>
+                      </div>
+                      <p className="text-sm font-bold">{p.asset_name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Resp: {p.responsavel_nome || '—'}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[9px] text-muted-foreground font-mono">Início: {p.proxima_data}</p>
+                      {p.data_fim && <p className="text-[9px] text-muted-foreground font-mono">Fim: {p.data_fim}</p>}
+                      {p.custo_estimado > 0 && <p className="text-[9px] font-bold text-foreground mt-1">MT {p.custo_estimado?.toLocaleString()}</p>}
+                    </div>
+                  </div>
+                  {p.descricao && (
+                    <p className="text-[10px] text-muted-foreground mt-2 italic border-t border-border/50 pt-2">{p.descricao}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="w-full" onClick={() => setSelectedDay(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Plan Details Modal */}
       <Dialog open={!!selectedPlan} onOpenChange={() => setSelectedPlan(null)}>
         <DialogContent className="max-w-md">
@@ -699,29 +967,38 @@ export default function Maintenance() {
           </DialogHeader>
           {selectedPlan && (
             <div className="space-y-6 pt-4">
+              <div className="flex items-center gap-2">
+                {(selectedPlan.prioridade === 'Alta' || selectedPlan.prioridade === 'Urgente') && (
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
+                    selectedPlan.prioridade === 'Urgente' ? 'bg-rose-500/15 border-rose-500/30 text-rose-500' : 'bg-amber-500/15 border-amber-500/30 text-amber-500'
+                  }`}>{selectedPlan.prioridade}</span>
+                )}
+                <Badge variant="outline" className="text-[9px]">{selectedPlan.periodicidade}</Badge>
+                <Badge variant={selectedPlan.tipo === 'Preventiva' ? 'outline' : 'destructive'} className="text-[9px]">{selectedPlan.tipo}</Badge>
+              </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <Label className="text-[10px] uppercase font-bold text-muted-foreground">Ativo</Label>
                   <p className="font-semibold">{selectedPlan.asset_name}</p>
                 </div>
                 <div>
-                   <Label className="text-[10px] uppercase font-bold text-muted-foreground">Vencimento</Label>
-                   <p className="font-semibold">{selectedPlan.proxima_data}</p>
-                </div>
-                <div>
-                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Tipo</Label>
-                  <p className="font-semibold">{selectedPlan.tipo}</p>
-                </div>
-                <div>
                   <Label className="text-[10px] uppercase font-bold text-muted-foreground">Responsável</Label>
                   <p className="font-semibold text-primary">{selectedPlan.responsavel_nome}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data de Início</Label>
+                  <p className="font-semibold font-mono text-xs">{selectedPlan.proxima_data}</p>
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase font-bold text-muted-foreground">Data de Fim</Label>
+                  <p className="font-semibold font-mono text-xs">{selectedPlan.data_fim || '—'}</p>
                 </div>
               </div>
               <Separator />
               <div className="space-y-2">
                 <Label className="text-[10px] uppercase font-bold text-muted-foreground">Instruções / Notas</Label>
                 <p className="text-xs text-muted-foreground leading-relaxed bg-muted/20 p-4 border border-border rounded-md italic">
-                  "{selectedPlan.descricao || 'Sem instruções específicas registradas.'}"
+                  {selectedPlan.descricao || 'Sem instruções específicas registradas.'}
                 </p>
               </div>
               <DialogFooter className="gap-3">
@@ -737,6 +1014,3 @@ export default function Maintenance() {
     </div>
   );
 }
-
-// Utilities mapped for local scope safety
-import { MoreHorizontal } from 'lucide-react';

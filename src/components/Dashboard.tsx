@@ -310,9 +310,9 @@ export default function Dashboard({ onSelectIncident }: { onSelectIncident?: (id
                         <Badge 
                           variant="outline"
                           className={`text-[9px] h-4 uppercase font-bold px-2 border-none ${
-                            inc.estado === 'Novo' 
+                            inc.estado === 'Aberto' || inc.estado === 'Novo' || inc.estado === 'Atribuído'
                               ? 'bg-rose-500/15 text-rose-500' 
-                              : (inc.estado === 'Em Progresso' ? 'bg-blue-500/15 text-blue-500' : 'bg-emerald-500/15 text-emerald-500')
+                              : (inc.estado === 'Em progresso' || inc.estado === 'Em Progresso' ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500')
                           }`}
                         >
                           {inc.estado}
