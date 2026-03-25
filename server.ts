@@ -81,9 +81,6 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 
-async function startServer() {
-  
-  // Rate Limiter configuration
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -116,8 +113,6 @@ async function startServer() {
       }
     });
   });
-
-  // ... (rest of the app.get/post/patch calls will be applied to the top-level 'app' instance)
 
   const authenticate = async (req: Request, res: Response, next: NextFunction) => {
     const token = req.headers.authorization?.split(" ")[1];
@@ -172,6 +167,8 @@ async function startServer() {
     logToFile(type, `[FRONTEND] ${message}`, { url, userAgent, ...data });
     res.json({ success: true });
   });
+
+
 
   // app.post("/api/login", authLimiter, async (req, res) => {
   app.post("/api/login", async (req, res) => {
@@ -302,7 +299,7 @@ async function startServer() {
     const { codigo, pin } = req.body;
     logToFile("INFO", "Tentativa de login cliente", { codigo, pin_length: pin?.length });
     if (!codigo || !pin) return res.status(400).json({ error: "Código e PIN são obrigatórios" });
-    const { data: dbCliente } = await supabaseAdmin.from('clientes').select('*').ilike('codigo', codigo).eq('pin', pin).single();
+    const { data: dbCliente } = await (supabaseAdmin || supabase).from('clientes').select('*').ilike('codigo', codigo).eq('pin', pin).single();
     const cliente = dbCliente;
     if (!cliente) {
       logToFile("WARNING", "Login cliente falhou: Código ou PIN inválidos", { codigo });
@@ -2705,6 +2702,8 @@ async function startServer() {
     }, 3000);
   }
 
+
+async function startServer() {
   // --- Seed Asset Categories ---
   setTimeout(async () => {
     try {
@@ -2742,7 +2741,6 @@ async function startServer() {
   }, 4200);
 
   // --- Frontend Serving & Routing ---
-  const isProduction = process.env.NODE_ENV === 'production';
 
   if (!isProduction) {
     // Development mode with Vite middleware
@@ -2806,16 +2804,17 @@ async function startServer() {
 // Prepare for Vercel: Export the app
 export default app;
 
-// Initial execution of the server setup logic & Listen
-startServer().then(() => {
-  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    const PORT = Number(process.env.PORT) || 3000;
-    httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`Nexo - SGFM running on http://localhost:${PORT}`);
-      logToFile("INFO", `Servidor Nexo SGFM iniciado e à escuta na porta ${PORT}`);
-      
-      const maintenanceScheduler = new MaintenanceScheduler(supabase, logToFile, io);
-      maintenanceScheduler.start();
-    });
-  }
+startServer().catch(err => {
+  logToFile("ERROR", "Falha crítica na inicialização do servidor", { error: err.message });
 });
+
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  const PORT = Number(process.env.PORT) || 3000;
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`Nexo - SGFM running on http://localhost:${PORT}`);
+    logToFile("INFO", `Servidor Nexo SGFM iniciado e à escuta na porta ${PORT}`);
+    
+    const maintenanceScheduler = new MaintenanceScheduler(supabase, logToFile, io);
+    maintenanceScheduler.start();
+  });
+}
