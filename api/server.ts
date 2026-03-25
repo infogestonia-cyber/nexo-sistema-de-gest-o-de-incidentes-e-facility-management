@@ -13,7 +13,7 @@ import { Server } from "socket.io";
 import dotenv from "dotenv";
 import { rateLimit } from "express-rate-limit";
 import type { Request, Response, NextFunction } from "express";
-import { MaintenanceScheduler } from "./server-maintenance-scheduler.js";
+import { MaintenanceScheduler } from "../server-maintenance-scheduler.js";
 
 dotenv.config();
 
@@ -39,7 +39,7 @@ console.log(`[Server] Starting in ${process.env.NODE_ENV === 'production' ? 'PRO
 
 // Logging Utility - Forcing path to project root
 const isProduction = process.env.NODE_ENV === 'production';
-const LOG_DIR = path.join(__dirname, "logs");
+const LOG_DIR = path.join(__dirname, "..", "logs");
 if (!isProduction && !fs.existsSync(LOG_DIR)) {
   console.log(`[Server] Creating log directory at: ${LOG_DIR}`);
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -91,7 +91,7 @@ const io = new Server(httpServer, { cors: { origin: "*" } });
   });
 
   // Servir ficheiros estáticos da pasta public (fotos, etc.)
-  app.use(express.static('public'));
+  app.use(express.static(path.join(__dirname, "..", "public")));
   
   // CORS: permitir pedidos de qualquer origem (necessário em produção)
   app.use(cors({ origin: true, credentials: true }));
@@ -2758,7 +2758,7 @@ async function startServer() {
     app.get('*', async (req, res, next) => {
       if (req.originalUrl.startsWith('/api') || req.originalUrl.includes('.')) return next();
       try {
-        const indexPath = path.resolve(__dirname, "index.html");
+        const indexPath = path.resolve(__dirname, "..", "index.html");
         let template = fs.readFileSync(indexPath, "utf-8");
         template = await vite.transformIndexHtml(req.originalUrl, template);
         res.status(200).set({ "Content-Type": "text/html" }).end(template);
