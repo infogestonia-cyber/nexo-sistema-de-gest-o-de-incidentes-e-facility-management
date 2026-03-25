@@ -2809,7 +2809,7 @@ export default app;
 // Initial execution of the server setup logic & Listen
 startServer().then(() => {
   if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    const PORT = process.env.PORT || 3000;
+    const PORT = Number(process.env.PORT) || 3000;
     httpServer.listen(PORT, "0.0.0.0", () => {
       console.log(`Nexo - SGFM running on http://localhost:${PORT}`);
       logToFile("INFO", `Servidor Nexo SGFM iniciado e à escuta na porta ${PORT}`);

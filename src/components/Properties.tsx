@@ -505,7 +505,8 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
                   <div className="p-4 border-t border-border/30">
                     <Pagination
                       currentPage={assetsCurrentPage}
-                      totalPages={Math.ceil(getAssetsForProperty(selectedProperty.id).length / ITEMS_PER_PAGE_ASSETS)}
+                      totalItems={getAssetsForProperty(selectedProperty.id).length}
+                      itemsPerPage={ITEMS_PER_PAGE_ASSETS}
                       onPageChange={setAssetsCurrentPage}
                     />
                   </div>
@@ -717,6 +718,17 @@ export default function Properties({ onSelectProperty }: { onSelectProperty: (id
                     </Card>
                   );
                 })}
+              </div>
+            )}
+            
+            {filteredProperties.length > itemsPerPage && (
+              <div className="mt-8">
+                <Pagination
+                  currentPage={currentPage}
+                  totalItems={filteredProperties.length}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                />
               </div>
             )}
           </motion.div>
