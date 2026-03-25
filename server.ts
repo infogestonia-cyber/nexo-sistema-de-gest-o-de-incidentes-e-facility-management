@@ -22,6 +22,7 @@ const __dirname = path.dirname(__filename);
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://cjatwytjglubwhydmtxn.supabase.co";
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_GqcBiP6hTOMf8ertftVawA_0ig2Xc8X";
+console.log("[Init] Usando Supabase URL:", SUPABASE_URL);
 // Service Role Key necessária para criar utilizadores via Admin API
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
 
@@ -2818,3 +2819,14 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     maintenanceScheduler.start();
   });
 }
+
+// Global Exception Safety for Serverless
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logToFile("ERROR", "Unhandled Rejection", { reason });
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  logToFile("ERROR", "Uncaught Exception", { error: err.message });
+});
