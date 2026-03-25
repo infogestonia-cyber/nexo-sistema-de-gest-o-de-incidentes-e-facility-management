@@ -31,14 +31,6 @@ const supabaseAdmin = SUPABASE_SERVICE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
 
-console.log(`[Supabase] URL: "${SUPABASE_URL}"`);
-console.log(`[Supabase] Admin Client: ${supabaseAdmin ? 'ATIVO' : 'INATIVO (Service Key em falta)'}`);
-if (!SUPABASE_SERVICE_KEY) {
-  console.warn("[WARNING] SUPABASE_SERVICE_KEY não encontrada. Algumas operações do portal do cliente podem falhar por RLS.");
-} else {
-  console.log(`[Supabase] Service Key Prefix: ${SUPABASE_SERVICE_KEY.substring(0, 10)}...`);
-}
-
 const JWT_SECRET = process.env.JWT_SECRET || "gestpro-secret-key-2025";
 // Palavra-passe do administrador local (configurável via variável de ambiente)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
@@ -90,7 +82,6 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 
 async function startServer() {
-  console.log("!!! STARTING SERVER - VERSION DEBUG 1.1 !!!");
   
   // Rate Limiter configuration
   const authLimiter = rateLimit({
@@ -485,16 +476,6 @@ async function startServer() {
     }
   });
 
-  // Endpoint para ler os logs (Debug Aberto temporariamente)
-  app.get("/api/admin/logs", async (req, res) => {
-    if (fs.existsSync(logFilePath)) {
-      const logs = fs.readFileSync(logFilePath, "utf-8");
-      res.header("Content-Type", "text/plain");
-      res.send(logs);
-    } else {
-      res.send("Nenhum log encontrado.");
-    }
-  });
 
   app.get("/api/cliente/ativos", authenticateCliente, async (req, res) => {
     const { perfil, property_id } = (req as any).cliente;
